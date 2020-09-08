@@ -1,0 +1,347 @@
+---
+title: "Flux2020_August"
+author: "Marion Nyberg"
+date: "05/08/2020"
+output: html_document
+---
+TO DO:
+- Energy balance closure
+- CH4 and CO2 soil temperature response (is this the same for both sites?)
+- Light response (NEE and PAR - for a similar amount of radiation does one site take up more c than another?)
+- WTD and CH4 and CO2 response
+- Dominant component of NEE? 
+- Timelag between GPP and CH4
+- use correct filled variables: 'FCH4_gf_RF', 'NEE_f', 'FCH4_f', 'GPP_f',' Reco_DT', 'GPP_DT'
+
+General thesis ideas: 
+Comparison of different management techniques - should we let the ecosystems recover on their own (BB2) or should we intervene (BB1)? 
+
+<!--Load libraries-->
+```{r, echo = FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+rm(list=ls())
+
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(lubridate)
+library(naniar)
+library(tidyr)
+library(plotly)
+library(knitr)
+
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data")
+BB2 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_L3.csv")
+BB2$Site <- "BB2"
+BB2[BB2 == -9999] <- NA
+BB2$DATE <- as.POSIXct(BB2$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+BB2$co2_flux[is.na(BB2$co2_flux)] <- 0 #Replace some NA values with 0 to allow calculation of cumulative summary
+BB2$ch4_flux[is.na(BB2$ch4_flux)] <- 0 
+BB2 <- BB2 %>%
+  filter(DATE >= '2020-01-01 01:00:00') %>%
+  summarize(Ts.5 = mean(BB2$SOIL_TEMP_1_5CM, BB2$SOIL_TEMP_2_5CM, BB2$SOIL_TEMP_3_5CM))
+  
+
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data")
+BB1 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_L3.csv")
+BB1$Site <- "BB1"
+BB1[BB1 == -9999] <- NA
+BB1$DATE <- as.POSIXct(BB1$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+BB1$co2_flux[is.na(BB1$co2_flux)] <- 0 #Replace some NA values with 0 to allow calculation of cumulative summary
+BB1$ch4_flux[is.na(BB1$ch4_flux)] <- 0 
+BB1 <- BB1 %>%
+  filter(DATE >= '2020-01-01 01:00:00')
+
+
+DATA <- full_join(BB1, BB2) #%>%
+  #select(c(DATE, date, time, Tau, H, LE, co2_flux, h2o_flux, ch4_flux, air_temperature, ET, RH, u., year, jday_local, jday, NEE_f, Reco, GPP_f, GPP_DT, Reco_DT, WTH, Site))
+
+DATA$SoilTemp.5cm <- ifelse(is.na(DATA$SOIL_TEMP_5CM), DATA$SOIL_TEMP_1_5CM, DATA$SOIL_TEMP_5CM)
+```
+
+
+<!--- Conversion factors --> 
+```{r}
+ch4_conv <- 12.01/(10^6)
+co2_conv <- 12.01/(10^6) 
+d.avg <- 1800 * 48 #60 secs * 60 mins * 24 hours
+```
+
+<!---Create daily average dataframe. A dd other variables as needed. -->
+```{r}
+Daily <- DATA %>%
+  ddply(c("jday", "Site", "date"), summarize,
+        CH4nmol = mean(ch4_flux),
+        FCumol = mean(co2_flux),
+        AirT = mean(air_temperature),
+        Ts5cm = mean(SoilTemp.5cm),
+        NEE = mean(NEE_f),
+        PAR_IN = mean(INCOMING_PAR),
+        GPP = mean(GPP_DT),
+        Reco = mean(Reco_DT),
+        CH4_gf = mean(FCH4_f),
+        SWin = mean(SHORTWAVE_IN),
+        WTH = mean(WTH)) %>%
+  mutate(CH4_f_daily = CH4_gf *d.avg) %>%
+  mutate(CH4gC_f = CH4_f_daily * ch4_conv) %>%
+  mutate(CH4mgC_f = CH4gC_f *1000) %>%
+  mutate(CH4daily = CH4nmol * d.avg) %>%    
+  mutate(CH4gC = CH4daily * ch4_conv) %>%
+  mutate(CH4mgC = CH4gC * 1000) %>%
+  mutate(NEEdaily_f = NEE * d.avg) %>%
+  mutate(NEEgC_f = NEEdaily_f * co2_conv) %>%
+  mutate(FCdaily = FCumol * d.avg) %>%
+  mutate(FCgC = FCdaily * co2_conv) %>%
+  mutate(AirT.cel = AirT - 273.15)
+```
+
+<!---Subset to 2020 data and add cumulative summaries-->
+```{r}
+BB1.daily <- Daily %>% 
+  filter(Site == "BB1") %>%
+  mutate(FCgCcum = cumsum(FCgC)) %>%
+  mutate(CH4mgCcum = cumsum(CH4mgC)) %>%
+  mutate(NEEgCcum_f = cumsum(NEEgC_f)) %>%
+  mutate(CH4cum_f = cumsum(CH4mgC_f))
+
+BB2.daily <- Daily %>% 
+  filter(Site == "BB2") %>%
+  mutate(FCgCcum = cumsum(FCgC)) %>%
+  mutate(CH4mgCcum = cumsum(CH4mgC))%>%
+  mutate(NEEgCcum_f = cumsum(NEEgC_f)) %>%
+  mutate(CH4cum_f = cumsum(CH4mgC_f))
+
+Daily.2020 <- full_join(BB1.daily, BB2.daily)
+```
+
+# 2020 daily averages
+
+## Daily mean C flux
+```{r}
+FCgC.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, FCgC, color = Site)) +
+  geom_line()+
+  ylab("Daily mean C flux (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(FCgC.p)
+```
+
+## Gap filled NEE
+```{r}
+NEE.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, NEEgC_f, color = Site)) +
+  geom_line()+
+  ylab("Daily mean C flux (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(NEE.p)
+```
+
+## Cumulative C flux 
+```{r}
+FCgCcum.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, NEEgCcum_f, color = Site)) +
+  geom_line()+
+  ylab("Daily mean cumulative C flux (gC m-2)")+
+  theme_bw()
+ggplotly(FCgCcum.p)
+```
+
+## Cumulative C flux - gap filled 
+```{r}
+FCgCcum_gf.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, FCgCcum_gf, color = Site)) +
+  geom_line()+
+  ylab("Daily mean cumulative C flux (gC m-2)")+
+  theme_bw()
+ggplotly(FCgCcum_gf.p)
+```
+
+
+## Daily mean CH4 flux
+```{r}
+CH4mgC.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, CH4mgC, color = Site)) +
+  geom_line()+
+  ylab("Daily mean CH4 flux (mgC m-2 day-1)")+
+  theme_bw()
+ggplotly(CH4mgC.p)
+```
+## Daily mean CH4 flux _ gapfilled
+```{r}
+CH4_f.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, CH4mgC_f, color = Site)) +
+  geom_line()+
+  ylab("Daily mean CH4 flux (mgC m-2 day-1)")+
+  theme_bw()
+ggplotly(CH4_f.p)
+```
+
+
+## Cumulative CH4 flux
+```{r}
+CH4mgCcum.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, CH4mgCcum, color = Site)) +
+  geom_line()+
+  ylab("Daily mean cumulative CH4 flux (mgC m-2)")+
+  theme_bw()
+ggplotly(CH4mgCcum.p)
+```
+
+## Cumulative CH4 flux - gf
+```{r}
+CH4mgCcum_gf.p <-Daily.2020 %>% 
+  ggplot(., aes(jday, CH4cum_f, color = Site)) +
+  geom_line()+
+  ylab("Daily mean cumulative CH4 flux (mgC m-2)")+
+  theme_bw()
+ggplotly(CH4mgCcum_gf.p)
+```
+
+
+# CH4 soil temperature response of daily means (5cm soil depth) 
+
+For a lower soil temperature BB1 produces more CH4.
+```{r}
+SoilT <- Daily.2020 %>%
+  ggplot(., aes(Ts5cm, CH4gC_f, colour = Site))+
+  geom_point()+
+  geom_smooth() +
+  scale_x_continuous(limits = c(0,25))+
+  theme_bw()
+ggplotly(SoilT)
+```
+
+# CO2 soil temperature response of daily means (5cm soil depth) 
+
+```{r}
+SoilTCO2 <- Daily.2020 %>%
+  ggplot(., aes(Ts5cm, NEEgC_f, colour = Site))+
+  geom_point()+
+  geom_smooth()+
+  scale_x_continuous(limits = c(0,25))+
+  theme_bw()
+ggplotly(SoilTCO2)
+```
+
+# Daily mean GPP and 5cm soil T
+
+```{r}
+SoilTGPP <- Daily.2020 %>%
+  ggplot(., aes(Ts5cm, GPP, colour = Site))+
+  geom_point()+
+  geom_smooth()+
+  scale_x_continuous(limits = c(0,25))+
+  theme_bw()
+ggplotly(SoilTGPP)
+```
+
+# Daily mean Reco and 5cm soil T
+
+```{r}
+SoilTReco <- Daily.2020 %>%
+  ggplot(., aes(jday, GPP, colour = Site))+
+  geom_point()+
+  geom_smooth()+
+  #scale_x_continuous(limits = c(0,25))+
+  theme_bw()
+ggplotly(SoilTReco)
+```
+```{r}
+p1 <- Daily.2020 %>%
+  ggplot(., aes(WTH, GPP, colour = Site))+
+  geom_point()+
+  geom_smooth()+
+  scale_x_continuous(limits = c(0,25))+
+  theme_bw()
+ggplotly(p1)
+```
+# Energy balance closure (all data BB1)
+
+y = 0.57x + 6.66
+R2 = 0.9
+```{r}
+Ebal_denominator.BB1 <- BB1$NR - BB1$G
+
+Ebal_numerator.BB1 <- BB1$H+BB1$LE
+
+BB1.energybal <- plot(x = Ebal_denominator.BB1, y = Ebal_numerator.BB1, xlab="Rn-G",ylab="LE+H")
+
+a.BB1<-round(coef(lm(Ebal_numerator.BB1~Ebal_denominator.BB1))[2],digits=2) #coef(lm(y~x))[2] is the slope of the regression
+b.BB1<-round(coef(lm(Ebal_numerator.BB1~Ebal_denominator.BB1))[1],digits=2)   
+r2.BB1<-round(summary(lm(Ebal_numerator.BB1~Ebal_denominator.BB1))$ r.squared,digits=2)
+
+lm_eq<-paste0("y=",a.BB1,"x",ifelse(b.BB1>0,"+",""),b.BB1)
+R2.BB1<-bquote(R^2 == .(r2.BB1)) 
+```
+
+# Energy balance closure BB2 (all data)
+
+y = 0.73x - 2.69
+R2 = 0.89
+```{r}
+Ebal_denominator.BB2 <- BB2$NR - BB2$G
+
+Ebal_numerator.BB2 <- BB2$H+BB2$LE
+
+BB2.energybal <- plot(x = Ebal_denominator.BB2, y = Ebal_numerator.BB2, xlab="Rn-G",ylab="LE+H")
+
+a.BB2<-round(coef(lm(Ebal_numerator.BB2~Ebal_denominator.BB2))[2],digits=2) #coef(lm(y~x))[2] is the slope of the regression
+b.BB2<-round(coef(lm(Ebal_numerator.BB2~Ebal_denominator.BB2))[1],digits=2)   
+r2.BB2<-round(summary(lm(Ebal_numerator.BB2~Ebal_denominator.BB2))$ r.squared,digits=2)
+
+lm_eq.BB2<-paste0("y=",a.BB2,"x",ifelse(b.BB2>0,"+",""),b.BB2)
+R2.BB2<-bquote(R^2 == .(r2.BB2)) 
+```
+
+More PAR_In --> better LUE at BB2
+Using NEE_f
+```{r}
+NEE.PAR <- Daily.2020 %>%
+  ggplot(., aes(SWin, NEEgC_f, colour = Site))+
+  geom_point()+
+  geom_smooth()+
+  theme_bw()
+ggplotly(NEE.PAR)
+```
+
+
+```{r, include = FALSE}
+#plot_ly(data = BB1.daily, x = ~jday, y = ~CH4mgC, name = 'CH4', type = 'scatter', mode = 'scatter') %>%
+ # add_trace(data = BB1.daily, x = ~jday, y = ~FCgC, name = 'CO2', mode = 'scatter') %>%
+```
+
+
+<!---Load ameriflux data to check-->
+```{r}
+setwd("/Users/marionnyberg/Google Drive/Micromet Lab/People/2019-Marion Nyberg")
+ameriflux <- read.csv("/Users/marionnyberg/Google Drive/Micromet Lab/People/2019-Marion Nyberg/amerifluxdf.csv")
+ameriflux$DATE <-  format(ameriflux$TIMESTAMP_END, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+ameriflux$DATE <- as.POSIXct(ameriflux$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+ameriflux$jday <-  format(ameriflux$DATE, "%j")
+```
+
+<!--Plot ameriflux and newly processed data
+plot as scatter plots instead of line
+1:1 of ameriflux and new-->
+```{r, include=FALSE}
+#plot_ly(data = DATA, x = ~jday, y = ~co2_flux, name = 'new', type = 'scatter', mode = 'markers') %>%
+ # add_trace(data = ameriflux, x = ~jday, y = ~FC, name = 'ameriflux', mode = 'markers', alpha = 0.3)
+```
+
+```{r}
+BB1$WTH_latest <- BB1$WTHCORR_new *1000
+  
+summary(BB1$WTHCORR_new)
+
+ggplot(BB2, aes(jday, WTH))+
+  geom_line()
+
+BB1.test <- BB1 %>%
+  filter(WTH_latest < 1000) %>%
+  ggplot(., aes(jday, WTH_latest))+
+  geom_line()
+
+ggplotly(BB1.test)
+
+```
