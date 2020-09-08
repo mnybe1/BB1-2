@@ -2,7 +2,9 @@
 title: "Flux2020_August"
 author: "Marion Nyberg"
 date: "05/08/2020"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 TO DO:
 - Energy balance closure
