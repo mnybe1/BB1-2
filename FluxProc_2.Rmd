@@ -1,0 +1,261 @@
+---
+title: "FluxProc_2"
+author: "Marion Nyberg"
+date: "03/09/2020"
+output: html_document
+---
+Load libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(lubridate)
+library(naniar)
+library(tidyr)
+library(plotly)
+library(knitr)
+
+rm(list=ls())
+```
+
+Cleaning data and choosing variables for analysis
+```{r}
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data")
+BB2 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_L3.csv")
+BB2$Site <- "BB2" 
+BB2[BB2 == -9999] <- NA
+BB2$DATE <- as.POSIXct(BB2$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+BB2 <- BB2 %>%
+  filter(DATE >= '2020-01-01 01:00:00')
+
+#Add met variables into this file as needed. Create means where there are multiple reps, e.g. soil temperature
+BB2.met <- BB2 %>%
+  select(c(DATE, date, month_local, AIR_TEMP_2M, INCOMING_PAR, SHORTWAVE_IN, SOIL_TEMP_1_5CM, SOIL_TEMP_1_10CM, SOIL_TEMP_1_30CM, SOIL_TEMP_1_50CM, SOIL_TEMP_2_5CM, SOIL_TEMP_2_10CM, SOIL_TEMP_2_30CM, SOIL_TEMP_2_50CM, SOIL_TEMP_3_5CM, SOIL_TEMP_3_10CM, SOIL_TEMP_3_30CM, SOIL_TEMP_3_50CM, WTH, jday, NR, G, LE, H, Site )) %>%
+  rowwise() %>%
+  mutate(TS.5 = mean(c(SOIL_TEMP_1_5CM, SOIL_TEMP_2_5CM, SOIL_TEMP_3_5CM))) %>%
+  mutate(TS.10 = mean(c(SOIL_TEMP_1_10CM, SOIL_TEMP_2_10CM, SOIL_TEMP_3_10CM))) %>%
+  mutate(TS.30 = mean(c(SOIL_TEMP_1_30CM, SOIL_TEMP_2_30CM, SOIL_TEMP_3_30CM)))
+
+#Flux subset - add more varirables as needed
+BB2.EC <- BB2 %>%
+  select (c(DATE, date, jday, month_local, time, Tau, ET, RH, u., jday, NEE_f, Reco, GPP_f, GPP_DT, Reco_DT, FCH4_f, FCH4_gf_RF, Site))
+
+BB2_new <- full_join(BB2.met, BB2.EC)
+                      
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data")
+BB1 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_L3.csv")
+BB1$Site <- "BB1"
+BB1[BB1 == -9999] <- NA
+BB1$DATE <- as.POSIXct(BB1$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+BB1 <- BB1 %>%
+  filter(DATE >= '2020-01-01 01:00:00')
+
+#need to check out WTH!!!
+BB1.met <- BB1 %>%
+  select(c(DATE, date, month_local, AIR_TEMP_2M, INCOMING_PAR, SHORTWAVE_IN, SOIL_TEMP_5CM, SOIL_TEMP_10CM, jday, NR, G, LE, H, Site )) %>%
+  rename(c("TS.5" = "SOIL_TEMP_5CM", "TS.10" = "SOIL_TEMP_10CM"))
+
+BB1.EC <- BB1 %>%
+  select (c(DATE, date, jday, month_local, time, Tau, ET, RH, u., jday, NEE_f, Reco, GPP_f, GPP_DT, Reco_DT, FCH4_f, FCH4_gf_RF, Site))
+
+BB1_new <- full_join(BB1.met, BB1.EC)
+
+BB <- full_join(BB1_new, BB2_new) %>%
+  select(-c(SOIL_TEMP_1_5CM, SOIL_TEMP_2_5CM, SOIL_TEMP_3_5CM, SOIL_TEMP_1_10CM, SOIL_TEMP_2_10CM, SOIL_TEMP_3_10CM, SOIL_TEMP_1_30CM, SOIL_TEMP_2_30CM, SOIL_TEMP_3_30CM,SOIL_TEMP_1_50CM, SOIL_TEMP_2_50CM, SOIL_TEMP_3_50CM))
+```
+
+Conversion factors
+```{r}
+ch4_conv <- 12.01/(10^6)
+co2_conv <- 12.01/(10^6) 
+d.avg <- 1800 * 48 #60 secs * 60 mins * 24 hours
+```
+
+```{r}
+Daily <- BB %>%
+  ddply(c("jday", "Site", "month_local"), summarize,
+        TS.5 = mean(TS.5),
+        TS.10 = mean(TS.10),
+        NEE_f = mean(NEE_f),
+        PAR_IN = mean(INCOMING_PAR),
+        GPP_DT = mean(GPP_DT),
+        GPP_f = mean(GPP_f),
+        Reco = mean(Reco),
+        Reco_DT = mean(Reco_DT),
+        CH4_f = mean(FCH4_f),
+        CH4_f_RF = mean(FCH4_gf_RF),
+        SWin = mean(SHORTWAVE_IN),
+        WTH = mean(WTH)) %>%
+  mutate(NEEgC_f = NEE_f * d.avg) %>%
+  mutate(NEEgC_f = NEEgC_f * co2_conv) %>%
+  mutate(GPPgC_DT = GPP_DT * d.avg) %>%
+  mutate(GPPgC_DT = GPPgC_DT * co2_conv) %>%
+  mutate(GPPgC_f = GPP_f *d.avg) %>%
+  mutate(GPPgC_f = GPPgC_f * co2_conv) %>%
+  mutate(RecogC = Reco * d.avg) %>%
+  mutate(RecogC = RecogC * co2_conv) %>%       
+  mutate(RecogC_DT = Reco_DT * d.avg) %>%
+  mutate(RecogC_DT = RecogC_DT * co2_conv) %>%
+  mutate(CH4gC_f = CH4_f * d.avg) %>%
+  mutate(CH4gC_f = CH4gC_f * ch4_conv) %>%
+  mutate(CH4mgC_f = CH4gC_f * 1000) %>%
+  mutate(CH4gC_f_RF = CH4_f_RF * d.avg) %>%
+  mutate(CH4gC_f_RF = CH4gC_f_RF * ch4_conv) %>%
+  mutate(CH4mgC_f_RF = (CH4gC_f_RF * 1000))
+```
+
+```{r}
+BB1.daily <- Daily %>% 
+  filter(Site == "BB1") %>%
+  mutate(NEEcum = cumsum(NEEgC_f)) %>%
+  mutate(GPPcum_f = cumsum(GPPgC_f)) %>%
+  mutate(Recocum = cumsum(RecogC)) %>%
+  mutate(CH4mgCcum = cumsum(CH4mgC_f)) %>%
+  mutate(CH4cum_f_RF = cumsum(CH4mgC_f_RF))
+
+BB2.daily <- Daily %>% 
+  filter(Site == "BB2") %>%
+  mutate(NEEcum = cumsum(NEEgC_f)) %>%
+  mutate(GPPcum_f = cumsum(GPPgC_f)) %>%
+  mutate(Recocum = cumsum(RecogC)) %>%
+  mutate(CH4mgCcum = cumsum(CH4mgC_f)) %>%
+  mutate(CH4cum_f_RF = cumsum(CH4mgC_f_RF))
+
+Daily <- full_join(BB1.daily, BB2.daily)
+```
+
+Time series
+```{r}
+NEE.p <-Daily %>% 
+  ggplot(., aes(jday, NEEgC_f, color = Site)) +
+  geom_line()+
+  ylab("Daily mean NEE (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(NEE.p)
+```
+
+```{r}
+NEEcum.p <-Daily %>% 
+  ggplot(., aes(jday, NEEcum, color = Site)) +
+  geom_line()+
+  ylab("Daily mean cumulative NEE (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(NEEcum.p)
+```
+
+```{r}
+GPP.p <-Daily %>% 
+  ggplot(., aes(jday, GPPgC_DT, color = Site)) +
+  geom_line()+
+  ylab("Daily mean GPP (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(GPP.p)
+```
+
+```{r}
+Reco.p <-Daily %>% 
+  ggplot(., aes(jday, RecogC, color = Site)) +
+  geom_line()+
+  ylab("Daily mean Reco (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(Reco.p)
+```
+
+Slight difference between MDS and RF gapfilling-  MDS overestimates BB1? 
+```{r}
+CH4.p <-Daily %>% 
+  ggplot(., aes(jday, CH4mgC_f, color = Site)) +
+  geom_line()+
+  ylab("Daily mean CH4 (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(CH4.p)
+```
+
+```{r}
+CH4RF.p <-Daily %>% 
+  ggplot(., aes(jday, CH4mgC_f_RF, color = Site)) +
+  geom_line()+
+  ylab("Daily mean CH4 (RF) (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(CH4RF.p)
+```
+
+```{r}
+TS5CH4.p <-Daily %>% 
+  ggplot(., aes(TS.5, CH4mgC_f_RF, color = Site)) +
+  geom_point()+
+  geom_smooth()+
+  ylab("Daily mean CH4 temperature response (gC m-2 day-1)")+
+  scale_x_continuous(limits = c(0,25)) +
+  theme_bw()
+ggplotly(TS5CH4.p)
+```
+
+```{r}
+TS10CH4.p <-Daily %>% 
+  ggplot(., aes(TS.10, CH4mgC_f_RF, color = Site)) +
+  geom_point()+
+  geom_smooth()+
+  ylab("Daily mean CH4 temperature response (gC m-2 day-1)")+
+  scale_x_continuous(limits = c(0,25)) +
+  theme_bw()
+ggplotly(TS10CH4.p)
+```
+
+```{r}
+WTHCH4.p <-Daily %>% 
+  ggplot(., aes(WTH, CH4mgC_f_RF, color = Site)) +
+  geom_point()+
+  geom_smooth()+
+  ylab("Daily mean CH4 response to WTH (mgC m-2 day-1)")+
+  theme_bw()
+ggplotly(WTHCH4.p)
+```
+At what WTH does CH4/CO2 peak? 
+```{r}
+WTHReco.p <-Daily %>% 
+  ggplot(., aes(WTH, RecogC, color = Site)) +
+  geom_point()+
+  geom_smooth()+
+  ylab("Daily mean Reco response to WTH (gC m-2 day-1)")+
+  theme_bw()
+ggplotly(WTHReco.p)
+```
+For a given Reco, GPP is lower at BB2 than BB1
+```{r}
+P1 <- Daily  %>%
+  ddply(c("Site", "month_local"), summarize,
+  Month.GPP = mean(GPPgC_f),
+  Month.Reco = mean(RecogC)) %>%
+  ggplot(., aes(Month.Reco, Month.GPP, color = Site)) +
+  geom_line()+
+  theme_bw()
+
+ggplotly(P1)
+
+P2 <- Daily %>%
+  ggplot(., aes(RecogC, GPPgC_DT, color = Site)) +
+  geom_line()+
+  theme_bw()
+P2
+```
+
+
+```{r}
+NEE.PAR <- Daily %>%
+  ggplot(., aes(SWin, GPPgC_f, colour = Site))+
+  geom_point()+
+  #geom_smooth()+
+  theme_bw()
+ggplotly(NEE.PAR)
+```
+
+```{r}
+P3 <- Daily %>%
+  ggplot(., aes(GPPgC_DT, CH4mgC_f_RF, color = Site)) +
+  geom_point()+
+  theme_bw()
+P3
+```
