@@ -1,0 +1,1171 @@
+---
+title: "C budget analysis"
+author: "Marion Nyberg"
+date: "07/10/2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(lubridate)
+library(naniar)
+library(tidyr)
+library(plotly)
+library(knitr)
+library(data.table)
+library(kableExtra)
+library(ggsci)
+library(effects)
+
+rm(list=ls())
+```
+
+```{r import data and choose variables, include=FALSE}
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data")
+BB2 <- fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_L3.csv")
+BB2$Site <- "BB2" 
+BB2[BB2 == -9999] <- NA
+BB2$DATE <- as.POSIXct(BB2$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+BB2 <- BB2 %>%
+  filter(DATE >= '2020-01-01 01:00:00')
+
+#Flux subset - add more variables as needed
+BB2.EC <- BB2 %>%
+  dplyr::select (c(DATE, date, jday, month_local, time, Tau, ET, RH, u., jday, co2_flux, ch4_flux, NEE_f, Reco, GPP_f, GPP_DT, Reco_DT, FCH4_gf_RF, Site))
+
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data")
+BB1 <- fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_L3.csv")
+BB1$Site <- "BB1"
+BB1[BB1 == -9999] <- NA
+BB1$DATE <- as.POSIXct(BB1$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+BB1 <- BB1 %>%
+  filter(DATE >= '2020-01-01 01:00:00')
+
+BB1.EC <- BB1 %>%
+  dplyr::select (c(DATE, date, jday, month_local, time, Tau, ET, RH, u., jday, co2_flux, ch4_flux, NEE_f, Reco, GPP_f, GPP_DT, Reco_DT, FCH4_f, FCH4_gf_RF, Site))
+
+BB <- full_join(BB1.EC, BB2.EC)
+
+write.csv(BB, "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/BB.csv")
+```
+
+```{r calculate daily means,include=FALSE}
+rm(list=ls())
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2")
+BB <- read.csv("BB.csv")
+
+#Conversion factors
+ch4_conv <- 12.01/(10^6)
+co2_conv <- 12.01/(10^6) 
+d.avg <- 1800 * 48 #60 secs * 60 mins * 24 hours
+
+#TO FILTER NON GF DATA TO DAYS WHERE ONLY 60% OR MORE IS PRESENT
+Daily.nGF <- BB %>%
+  dplyr::select(c(Site, jday, month_local, co2_flux, ch4_flux))
+
+Daily.nGF <- Daily.nGF %>%
+    group_by(Site, jday, ch4_flux, co2_flux) %>%
+  na.omit()
+
+Daily.nGF <-  Daily.nGF %>%
+  group_by(Site, jday) %>%
+  filter(!(((ch4_flux)/48 > 0.60) & (co2_flux)/48 >0.60))
+
+Daily.nGF <- Daily.nGF %>%
+  ddply(c("jday", "Site", "month_local"), summarize,
+        co2 = mean(co2_flux),
+        ch4 = mean(ch4_flux)) %>%
+  mutate(co2gC = co2 *d.avg) %>%
+  mutate(co2gC = co2gC * co2_conv) %>%
+  mutate(ch4gC = ch4 *d.avg) %>%
+  mutate(ch4gC = ch4gC * co2_conv) %>%
+  mutate(ch4mgC = ch4gC * 1000)
+  
+Daily.nGF$month_local <- as.factor(Daily.nGF$month_local)
+
+Daily <- BB %>%
+  ddply(c("jday", "Site", "month_local"), summarize,
+        NEE_f = mean(NEE_f),
+        GPP_DT = mean(GPP_DT),
+        GPP_f = mean(GPP_f),
+        Reco = mean(Reco),
+        Reco_DT = mean(Reco_DT),
+        CH4_f = mean(FCH4_f),
+        CH4_f_RF = mean(FCH4_gf_RF)) %>%
+  mutate(NEEgC_f = NEE_f * d.avg) %>%
+  mutate(NEEgC_f = NEEgC_f * co2_conv) %>%
+  mutate(GPPgC_DT = GPP_DT * d.avg) %>%
+  mutate(GPPgC_DT = GPPgC_DT * co2_conv) %>%
+  mutate(GPPgC_f = GPP_f *d.avg) %>%
+  mutate(GPPgC_f = GPPgC_f * co2_conv) %>%
+  mutate(RecogC = Reco * d.avg) %>%
+  mutate(RecogC = RecogC * co2_conv) %>%       
+  mutate(RecogC_DT = Reco_DT * d.avg) %>%
+  mutate(RecogC_DT = RecogC_DT * co2_conv) %>%
+  mutate(CH4gC_f = CH4_f * d.avg) %>%
+  mutate(CH4gC_f = CH4gC_f * ch4_conv) %>%
+  mutate(CH4mgC_f = CH4gC_f * 1000) %>%
+  mutate(CH4gC_f_RF = CH4_f_RF * d.avg) %>%
+  mutate(CH4gC_f_RF = CH4gC_f_RF * ch4_conv) %>%
+  mutate(CH4mgC_f_RF = (CH4gC_f_RF * 1000))
+
+BB1.daily <- Daily %>% 
+  filter(Site == "BB1") %>%
+  mutate(NEEcum = cumsum(NEEgC_f)) %>%
+  mutate(GPPcum_f = cumsum(GPPgC_f)) %>%
+  mutate(Recocum = cumsum(RecogC)) %>%
+  mutate(CH4mgCcum = cumsum(CH4mgC_f)) %>%
+  mutate(CH4cum_f_RF = cumsum(CH4mgC_f_RF)) %>%
+  mutate(CH4cum_f_RF_gC = cumsum(CH4gC_f_RF))
+
+BB2.daily <- Daily %>% 
+  filter(Site == "BB2") %>%
+  mutate(NEEcum = cumsum(NEEgC_f)) %>%
+  mutate(GPPcum_f = cumsum(GPPgC_f)) %>%
+  mutate(Recocum = cumsum(RecogC)) %>%
+  mutate(CH4mgCcum = cumsum(CH4mgC_f)) %>%
+  mutate(CH4cum_f_RF = cumsum(CH4mgC_f_RF))%>%
+  mutate(CH4cum_f_RF_gC = cumsum(CH4gC_f_RF))
+
+Daily <- full_join(BB1.daily, BB2.daily)
+Daily$month_local <- as.factor(Daily$month_local)
+
+DailyGS <- Daily[(Daily$jday >= 92 & Daily$jday <= 274), ] 
+DailyNGS <-Daily[(Daily$jday < 92 | Daily$jday >=275), ] 
+
+
+Cbudget <- Daily %>%
+  dplyr::select(c(Site, month_local, jday, CH4mgC_f_RF, CH4gC_f_RF, NEEgC_f)) %>%
+  group_by(Site, month_local) %>%
+  summarise(CH4gCcum = cumsum(CH4gC_f_RF),
+            CH4mgcum = cumsum(CH4mgC_f_RF),
+            NEEgCcum = cumsum(NEEgC_f),
+            NEEgC = NEEgC_f,
+            CH4gC = CH4gC_f_RF,
+            CH4mgC = CH4mgC_f_RF,
+            jday = jday)
+```
+
+
+## {.tabset}
+
+
+
+### CO2 exchange
+
+Annual cumulative NEE
+- Daily mean cumulative NEE  (gC m-2 day-1)
+- Using daily averages of NEEgC_f values
+```{r, cumulative NEE}
+(NEEcum.p <-Daily %>% 
+  ggplot(., aes(jday, NEEcum, color = Site)) +
+  geom_line()+
+  scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+  theme_bw())
+
+Daily %>%
+  dplyr::select(c(Site, NEEcum, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = NEEcum) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total NEE") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+Monthly NEE
+```{r, monthly NEE}
+(NEE.m <- Cbudget %>%
+  ddply(c("Site", "month_local"), summarise,
+    NEE = cumsum(NEEgC)) %>%
+  ggplot(., aes(month_local, NEE, fill = Site)) +
+  ylab("Monthly total NEE (gC m-2)") +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_bw())
+```
+
+Ecosystem respiration
+```{r, cumulative ER}
+(Recocum.p <-Daily %>% 
+  ggplot(., aes(jday, Recocum, color = Site)) +
+  geom_line()+
+    scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+  theme_bw())+
+  theme(legend.position = "none")
+
+Daily %>%
+  dplyr::select(c(Site, Recocum, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = Recocum) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total REco") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+Gross primary productivity
+```{r, cumulative GPP}
+(GPPcum.p <-Daily %>% 
+  ggplot(., aes(jday, GPPcum_f, color = Site)) +
+  geom_line()+
+  scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative GPP (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+  theme_bw())
+  
+g_legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)}
+
+mylegend<-g_legend(GPPcum.p)
+
+Daily %>%
+  dplyr::select(c(Site, GPPcum_f, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = GPPcum_f) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total GPP") %>%
+  kable_classic(html_font = "Cambria")
+
+library(gridExtra)
+
+p3 <- grid.arrange(GPPcum.p + theme(legend.position = "none"), Recocum.p + theme(legend.position = "none"), mylegend, ncol=3, widths=c(2.3, 2.3, 0.8))
+p4 <- grid.arrange(NEEcum.p + theme(legend.position = "none"), CH4cum.p + theme(legend.position = "none"), mylegend, ncol=3, widths=c(2.3, 2.3, 0.8))
+```
+
+
+### CH4 flux
+
+Cumulative CH4
+```{r, cumulative CH4}
+(CH4cum.p <-Daily %>% 
+  ggplot(., aes(jday, CH4cum_f_RF_gC, color = Site)) +
+  geom_line()+
+    scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+  theme_bw())
+
+Daily %>%
+  dplyr::select(c(Site, CH4cum_f_RF_gC, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = CH4cum_f_RF_gC) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total CH4 flux (g C m-2 day-1") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+```{r, monthly CH4}
+(CH.month <- Cbudget %>%
+  ddply(c("Site", "month_local"), summarise,
+    CH4 = sum(CH4gC)) %>%
+  ggplot(., aes(month_local, CH4, fill = Site)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  ylab("Monthly total CH4 flux (g C m-2)")+
+  xlab("Month")+
+  theme_bw())
+```
+
+### GHG budget
+```{r}
+#mCH4 <- 16.04
+#mCO2 <- 44.01
+GWPCH4.20 <- 84 
+GWPCH4.100 <- 28 # no feedback
+SGWPCH4.100 <- 45
+SGWPCH4.20 <- 96
+
+CO2eq <- Daily %>% 
+  group_by(Site,month_local) %>%
+  summarise(NEE = sum(NEEgC_f),
+            CH4 = sum(CH4gC_f_RF)) %>%
+  mutate(CO2_CH4eq100 = GWPCH4.100 * (CH4 * (16.04/12.01)),
+         CO2_CH4eq20 = GWPCH4.20 * (CH4 * (16.04/12.01)),
+         CO2_CO2eq = NEE * (44.01/12.01),
+         SGWP100CH4 = SGWPCH4.100 * (CH4 * (16.04/12.01)),
+         SGWP20CH4 = SGWPCH4.20 * (CH4 * (16.04/12.01))) %>%
+  mutate(GHG_eq100 = CO2_CH4eq100 + CO2_CO2eq,
+         GHG_eq20 = CO2_CH4eq20 + CO2_CO2eq) %>%
+  group_by(Site) %>%
+  mutate(total.20yrGHG = cumsum(GHG_eq20),
+         total.100yrGHG = cumsum(GHG_eq100),
+         cumCO2 = cumsum(CO2_CO2eq),
+         cumCH420yr = cumsum(CO2_CH4eq20),
+         cumCH4100yr = cumsum(CO2_CH4eq100),
+         SGWPcumCH4100yr = cumsum(SGWP100CH4),
+         SGWPcumCH420yr = cumsum(SGWP20CH4),
+         cumCH4gC20yrSGWP = cumsum(CH4)*SGWPCH4.20,
+         cumCH4gC100yrSGWP = cumsum(CH4)*SGWPCH4.100) %>%
+  mutate(cumNEESGWP = cumsum(NEE) - cumsum(CH4))%>%
+  mutate(cumNEECO2 = cumNEESGWP *(44.01/12.01)) %>%
+  mutate(SGWPtotal20 = cumNEECO2 + cumCH4gC20yrSGWP) %>%
+  mutate(SGWPtotal100 = cumNEECO2 + cumCH4gC100yrSGWP)
+
+
+
+CO2.eq.p <- ggplot(CO2eq, aes(month_local, CO2_CO2eq, fill = Site)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  ggtitle("Total monthly Carbon dioxide flux (g CO2)")+
+  ylab("g CO2 month-1") +
+   #scale_x_discrete(limits = month.abb) +
+  theme_bw()
+ggplotly(CO2.eq.p)
+
+
+CO2CH4.eq20 <- ggplot(CO2eq, aes(month_local, CO2_CH4eq20, fill = Site)) + 
+  geom_col(position = "dodge") +
+  ggtitle("Total monthly CH4 CO2 eq. 20 year GWP (g CO2)")+
+  ylab("g CO2 month-1") +
+  xlab("Month")+
+   #scale_x_discrete(limits = month.abb) +
+  theme_bw()
+ggplotly(CO2CH4.eq20)
+
+CO2CH4.eq100 <- ggplot(CO2eq, aes(month_local, CO2_CH4eq100, fill = Site)) + 
+  geom_col(position = "dodge") +
+  ggtitle("CO2 eq. 100 year GWP")+
+  xlab("Month")+
+   #scale_x_discrete(limits = month.abb) +
+  theme_bw()
+ggplotly(CO2CH4.eq100)
+
+CO2CH4.eq100.bar <- ggplot(CO2eq, aes(month_local, GHG_eq100, fill = Site)) + 
+  geom_col(position = "dodge") +
+  ggtitle("CO2 eq. 100 year GWP")+
+   #scale_x_discrete(limits = month.abb) +
+  theme_bw()
+ggplotly(CO2CH4.eq100.bar)
+
+SGWP.CO2CH4.eq20 <- ggplot(CO2eq, aes(month_local, SGWP20CH4, fill = Site)) + 
+  geom_col(position = "dodge") +
+  ggtitle("Total monthly CH4 CO2 eq. 20 year SGWP (g CO2)")+
+  ylab("g CO2 month-1") +
+  xlab("Month")+
+   #scale_x_discrete(limits = month.abb) +
+  theme_bw()
+ggplotly(SGWP.CO2CH4.eq20)
+
+SGWP.CO2CH4.eq100 <- ggplot(CO2eq, aes(month_local, SGWP100CH4, fill = Site)) + 
+  geom_col(position = "dodge") +
+  ggtitle("Total monthly CH4 CO2 eq. 100 year SGWP (g CO2)")+
+  ylab("g CO2 month-1") +
+  xlab("Month")+
+   #scale_x_discrete(limits = month.abb) +
+  theme_bw()
+ggplotly(SGWP.CO2CH4.eq100)
+
+
+
+```
+
+
+```{r}
+BB2<-fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/met_data/met_merged/met_corrected_gapfilledBB2.csv") %>%
+  rowwise() %>%
+  mutate(TS.5 = mean(c(SOIL_TEMP_1_5CM, SOIL_TEMP_2_5CM, SOIL_TEMP_3_5CM))) %>%
+  mutate(TS.10 = mean(c(SOIL_TEMP_1_10CM, SOIL_TEMP_2_10CM, SOIL_TEMP_3_10CM))) %>%
+  mutate(TS.30 = mean(c(SOIL_TEMP_1_30CM, SOIL_TEMP_2_30CM, SOIL_TEMP_3_30CM))) %>%
+  rename("WTH1" ="WTH") %>%
+  filter(DATE >= '2020-01-01 01:00:00') 
+BB2$Site <- "BB2"
+BB2$DATE <- as.POSIXct(BB2$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+
+
+#Replace bad BB2 RH with NA til the 29th of March:
+ind <- which(BB2$DATE <= '2020-03-29 00:00:00') #Use either this one or the one below?
+BB2$RH_2M[ind] <- NA
+
+BB1 <- fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/met_merged/met_corrected_gapfilled.csv")%>%
+  rename(c("TS.5" = "SOIL_TEMP_5CM", "TS.10" = "SOIL_TEMP_10CM"), "WTH1" = "WTH_absolute") %>%
+  filter(DATE >= '2020-01-01 01:00:00')
+BB1$Site <- "BB1"
+BB1$DATE <- as.POSIXct(BB1$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
+
+# Create new dataframe with BB1 and BB2  RH to run lm
+BB2RH <- BB2 %>% dplyr::select(c(RH_2M, DATE))
+BB1RH <- BB1 %>% dplyr::select(c(RH_2M, DATE))
+
+RH <- merge(BB1RH, BB2RH, by = 'DATE') %>%
+  rename(BB2 = RH_2M.y,
+         BB1 = RH_2M.x) 
+
+lm1 <- lm(BB2~BB1, RH)
+summary(lm1)
+
+coef <- 1.136330
+offset <- -14.369505
+
+#BB2$RH_2M[match(RH$DATE, BB2$DATE)] <- coef * RH$BB1RH + offset # Replace the values for BB2 RH in BB2 
+BB2$RH_2M[ind] <- coef * RH$BB1[ind] + offset
+
+BB2$VPD[ind] <- BB2$es[ind]*(1-(BB2$RH_2M[ind]/100))
+
+
+# Join BB1 and BB2 DF together:
+BB.daily <- full_join(BB1, BB2) 
+BB.daily$month <- months(BB.daily$DATE, abbreviate = TRUE)
+
+```
+
+```{r}
+BB.daily <- BB.daily%>%
+  ddply(c("jday", "Site", "month"), summarize,
+        TS.5 = mean(TS.5),
+        TS.10 = mean(TS.10),
+        TS.30 = mean(TS.30),
+        RH = mean(RH_2M),
+        PARin = mean(INCOMING_PAR),
+        SWin = mean(SHORTWAVE_IN),
+        VPD = mean (VPD),
+        Precip = sum(PRECIP),
+        Ta = mean(AIR_TEMP_2M),
+        WTH = mean(WTH1),
+        SWC = mean(SVWC))
+
+summary(BB.daily)
+
+BB.daily.sum <- BB.daily %>%
+  select(jday, Site, Ta, Precip, WTH) %>%
+  group_by("Site") %>%
+  ddply("Site", summarize,
+        TA = mean(Ta),
+        PRECIP = mean(Precip),
+        WTH = mean(WTH))
+```
+### WTH
+```{r}
+
+```
+
+### Soil temperature
+```{r}
+TS5.lm <-BB.daily %>% 
+  select(c(TS.5, Site, jday)) %>% 
+           pivot_wider(names_from = Site, values_from = TS.5)
+TS5.lm.1 <- lm(BB1~BB2, TS5.lm)
+summary(TS5.lm.1)
+coef.TS5 <- 0.8922
+intercept.TS5 <- 1.9279
+
+TS5.lm$BB1[which(TS5.lm$BB1 < "0")] = NA
+TS5.lm$BB1[which(is.na(TS5.lm$BB1))] = intercept.TS5 + coef.TS5 + TS5.lm$BB2[which(is.na(TS5.lm$BB1))] 
+
+BB.daily$TS.5<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.5)
+BB.daily$TS.5[which(is.na(BB.daily$TS.5))] = TS5.lm$BB1
+
+BB.dailyGS <- BB.daily[(BB.daily$jday >= 92 & BB.daily$jday <= 274), ] 
+BB.dailyNGS <-BB.daily[(BB.daily$jday < 92 | BB.daily$jday >=275), ] 
+
+TS5.p <- ggplot(BB.daily, aes(jday, TS.5)) + 
+  geom_line(aes (color = Site)) +
+    scale_colour_manual(values = c("#0072B2", "#D55E00"))+
+  ylab("5cm soil temperature (deg C)") +
+  xlab("Julian DOY") +
+  theme_bw()
+TS5.p
+ggplotly(TS5.p)
+
+kruskal.test(TS.5~Site, data = BB.daily)
+kruskal.test(TS.5~Site, data = BB.dailyGS)
+kruskal.test(TS.5~Site, data = BB.dailyNGS)
+
+
+TS10.lm <-BB.daily %>% 
+  select(c(TS.10, Site, jday)) %>% 
+           pivot_wider(names_from = Site, values_from = TS.10)
+TS10.lm.1 <- lm(BB1~BB2, TS10.lm)
+summary(TS10.lm.1)
+coef.TS10 <- 0.93555 
+intercept.TS10 <- 1.44584
+
+TS10.lm$BB1[which(TS10.lm$BB1 < "0")] = NA
+TS10.lm$BB1[which(is.na(TS10.lm$BB1))] = intercept.TS10 + coef.TS10 + TS10.lm$BB2[which(is.na(TS10.lm$BB1))] 
+
+BB.daily$TS.10<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.10)
+BB.daily$TS.10[which(is.na(BB.daily$TS.10))] = TS10.lm$BB1
+
+TS10.p <- ggplot(BB.daily, aes(jday, TS.10)) + 
+  geom_line(aes (color = Site)) +
+   ylab("10cm soil temperature (deg C)") +
+  xlab("Julian DOY") +
+   scale_color_aaas()+
+  theme_minimal()
+ggplotly(TS10.p)
+
+kruskal.test(TS.10 ~ Site, data = BB.daily)
+kruskal.test(TS.10 ~ Site, data = BB.dailyGS)
+kruskal.test(TS.10 ~ Site, data = BB.dailyNGS)
+
+```
+
+### Air temperature
+```{r}
+
+(Ta.p <- ggplot(BB.daily, aes(jday, Ta)) + 
+  geom_line(aes (color = Site)) +
+   ylab("Air temperature (deg C)")+
+  xlab("Julian DOY") +
+   #ggtitle("Air temperature at BB1 and BB2")+
+   scale_color_aaas()+
+  theme_bw())
+ggplotly(Ta.p)
+
+kruskal.test(Ta ~ Site, data = BB.daily)
+
+AirT.sum <- BB.daily %>% 
+  select(Ta, jday, month) %>%
+  summarise()
+```
+
+### Relative humidity
+
+```{r}
+ggplotly(RH.p <- ggplot(BB.daily, aes(jday, RH)) + 
+  geom_line(aes(colour = Site)) +
+    ylab("RH (%)") +
+    xlab("Julian DOY") +
+    ggtitle("RH at BB1 and BB2")+
+   scale_color_aaas()+
+  theme_bw())
+
+kruskal.test(RH~Site, data=BB.daily)
+```
+
+
+### VPD
+```{r}
+(VPD.p <- ggplot(BB.daily, aes(jday, VPD)) + 
+  geom_line(aes (color = Site)) +
+   ylab("VPD (hPa day-1)") +
+   xlab("Julian DOY") +
+   ggtitle("VPD at BB1 and BB2")+
+   scale_color_aaas()+
+  theme_bw())
+ggplotly(VPD.p)
+```
+
+### Precipitation  - 
+```{r}
+Precip <- BB.daily %>% 
+  group_by(Site, month) %>%
+  summarise(Precip = cumsum(Precip))
+
+P.p <- ggplot(Precip, aes(month, Precip, fill = Site)) + 
+  geom_bar(stat = "identity", position = 'dodge') +
+   scale_x_discrete(limits = month.abb) +
+   scale_fill_aaas()+
+  theme_bw()
+ggplotly(P.p)
+
+EC_precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/EC_precip/EC_precip.csv')
+EC_precip$Timestamp <- as.POSIXlt(EC_precip$Timestamp, format = "%Y-%m-%d")
+EC_precip$jday <- yday(EC_precip$Timestamp)
+EC_precip$Site <- 'EC'
+
+
+EC_precip$month <- months(EC_precip$Timestamp, abbreviate = TRUE)
+
+BB.daily.Precip <- full_join(BB.daily, EC_precip) %>%
+  group_by(Site, month) %>%
+  summarise(Precip = cumsum(Precip))
+
+Precip.p <- ggplot(BB.daily.Precip, aes(month, Precip, fill = Site)) + 
+  geom_bar(stat = "identity", position = 'dodge') +
+   scale_x_discrete(limits = month.abb) +
+  ylab("Precipitaion (mm)")+
+   scale_fill_aaas()+
+  theme_bw()
+ggplotly(Precip.p)
+```
+
+### Radiation
+```{r}
+(BB.daily %>% filter(Site == "BB2") %>%
+   ggplot(., aes(jday, SWin)) + 
+  geom_line()) +
+  ylab("Incoming SW raditation (W m-2 day-1)")+
+  ggtitle("Incoming SW radiation at BB2")+
+   scale_color_aaas()+
+  theme_bw()
+```
+
+### NDVI
+```{r}
+NDVI1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB_ndvi/bb1_ndvi.csv')
+NDVI1$Site <- 'BB1'
+ind <- which(NDVI1$system.time_start == '13-Jul-20')
+NDVI1$NDVI[ind] <- NA
+NDVI2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB_ndvi/bb2_ndvi.csv')  
+NDVI2$Site <- 'BB2'
+NDVI <- full_join(NDVI1, NDVI2)
+NDVI$DATE <- dmy(NDVI$system.time_start)
+ndvi.lm <- NDVI %>% pivot_wider(names_from = Site, values_from = NDVI)
+ndvi.lm <- lm(BB1~BB2, ndvi.lm)
+summary(ndvi.lm)
+coef.ndvi <- 1.19249
+intercept.ndvi <- -0.22469
+
+NDVI <- NDVI %>% filter(DATE >= "2020-01-01")
+
+(NDVI.p <- ggplot(NDVI, aes(DATE, NDVI)) + 
+  geom_line(aes (color = Site)) +
+    scale_x_date(date_breaks = "2 weeks") +
+   scale_color_aaas()+
+  theme_bw()+ 
+    theme(axis.text.x = element_text(angle = 90)))
+```
+
+### WTH
+```{r}
+
+
+
+WTH.p <- ggplot(BB.daily, aes(jday, WTH)) + 
+ geom_line(aes(colour = Site)) +
+    scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab("WTH (cm)")+
+  xlab("Julian day of year") +
+  ggtitle("Water table height at BB1 and BB2") +
+  theme_bw()
+ggplotly(WTH.p)
+
+kruskal.test(WTH~Site, data = BB.daily)
+kruskal.test(WTH~Site, data = BB.dailyGS)
+kruskal.test(WTH~Site, data = BB.dailyNGS)
+
+```
+
+The new BB1 WTH data was calculated using the method from YK : "  WTH_absolute is absolute WTH (WTH_corrected - mean(Cground))." 
+
+In this case, WTH_corrected is the WT data that has been corrected using methods from JE, whereby the automated sensor measurements with a slope and coefficient that comes from a lm: manual WT ~ auto WT. 
+The manual WT is w.top - (WT_man/100).
+
+Cground is (height of the top of the pipe a.s.l = 4.606m) - (height of pipe above the ground = 1.18m). This yields a similar result to mean((Cground)) used in YK analysis. 
+
+### SWC
+```{r}
+SWC.p <- ggplot(BB.daily, aes(jday, SWC)) + 
+ geom_line(aes(colour = Site)) +
+  ylab("SWC (%)")+
+  xlab("Julian DOY") +
+  ggtitle("SWC at BB1 and BB2") +
+   scale_color_aaas()+
+  theme_bw()
+ggplotly(SWC.p)
+```
+### EC average data
+NEED TO CALCULATE THE DEVIATION FROM THE MEAN OR FROM EC DATA - (BB-EC) 
+EC data is 10 year average
+```{r import EC data for BB}
+EC <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/met_ancillary/ECCC/ECCC_met_merged.csv')
+#EC$month <- months(EC_precip$Month, abbreviate = TRUE)
+EC$month <- month.abb[EC$Month]
+EC$Year <- '2011'
+EC$date <- paste(EC$Year, EC$month, EC$Day, sep="-") %>% ymd() %>% as.Date()
+EC$jday <- yday(EC$date)
+
+EC <- EC %>%
+  filter(!is.na(RH_2M)) %>% # takes out all potentially problematic entries
+  ddply(c("jday"), summarize,
+        Ta = mean(AIR_TEMP_2M),
+        RH = mean(RH_2M))
+
+EC$Site <- 'EC'
+EC <- full_join(EC, EC_precip)
+
+
+EC.BB <- full_join(EC, BB.daily)#%>%
+  #group_by(Site, month) 
+miss <- is.na(EC.BB$Precip)
+EC.BB$Precip[miss] <- 0
+
+
+Ta.p <- ggplot(EC.BB, aes(jday, Ta)) + 
+ geom_line(aes(colour = Site)) +
+  ylab("Air temperature (deg C)")+
+  xlab("Julian DOY") +
+  ggtitle("Air temperature for BB1, BB1 and the 10 year average from EC") +
+   scale_color_aaas()+
+  theme_bw()
+ggplotly(Ta.p)
+
+
+
+RH.p <- ggplot(EC.BB, aes(jday, RH)) + 
+ geom_line(aes(colour = Site)) +
+  ylab("Air temperature (deg C)")+
+  xlab("Julian DOY") +
+  ggtitle("Air temperature for BB1, BB1 and the 10 year average from EC") +
+   scale_color_aaas()+
+  theme_bw()
+ggplotly(RH.p)
+
+
+EC.BB.Precip <- EC.BB %>% select(c("month", "Precip", "Site")) %>%
+  group_by(Site, month)
+
+miss <- is.na(EC.BB.Precip$Precip)
+EC.BB.Precip$Precip[miss] <- 0
+
+Precip.p <- ggplot(EC.BB.Precip, aes(month, Precip, fill = Site)) + 
+  geom_bar(stat = "identity", position = 'dodge') +
+   scale_x_discrete(limits = month.abb) +
+  ylab("Precipitaion (mm)")+
+   scale_fill_aaas()+
+  theme_bw()
+ggplotly(Precip.p)
+
+#To calculate deviation of BB sites from 10 year average EC data:
+EC.BB2 <- EC.BB %>% dplyr::select(jday, month, Site, Precip, RH, Ta) %>%
+  ddply(c("Site", "month"), summarise,
+        Precip = mean(Precip),
+        Ta = mean(Ta),
+        RH = mean(RH))
+EC.BB2 <- EC.BB2 %>% pivot_wider(id_cols = Site)
+```
+
+### Effects on CO2 and CH4 fluxes
+```{r}
+library(caret)
+library(leaps)
+#library(MASS)
+library(car)
+
+D1 <- full_join(Daily, Daily.nGF)
+Fulldata <- full_join(BB.daily, D1)
+summary(Fulldata)
+
+# Identify outliers:
+outliers<- ggplot(Fulldata, aes(jday, ch4gC))+geom_point()
+ggplotly(outliers)
+
+Fulldata <- Fulldata %>% filter(!(ch4gC < -2.59 * 10^-2))
+
+
+Fulldata <- Fulldata %>%
+  mutate(CH4_gC = (ch4gC + 0.03),
+         CH4_mgC = (ch4mgC + 26)) %>%
+  mutate(logCH4_gC = log(CH4_gC),
+         logCH4_mgC = log(CH4_mgC))
+
+FulldataGS <- Fulldata[(Fulldata$jday >= 92 & Fulldata$jday <= 274), ] 
+FulldataNGS <-Fulldata[(Fulldata$jday < 92 | Fulldata$jday >=275), ] 
+
+indGS <- (Fulldata$jday >= 92 & Fulldata$jday <= 274)
+indnonGS <- (Fulldata$jday < 92 | Fulldata$jday >=275)
+
+Fulldata$Period <- " "
+Fulldata$Period[indGS] <- "GS"
+Fulldata$Period[indnonGS] <- "NGS"
+```
+
+Effects of CH4 flux: 
+ - Chu et al., 2014 : ln(CH4) x 10^3 ~ Soil temperature, U*, WT, GEP(for GS)
+  - CH4 - g C-CH4 m^-2 day^-1
+ - need to check log transformation and adding the minimum value to all value to make sure there are no negative values - log transform before or after offsetting for 0? 
+  - I think offset from 0 first
+ - how to deal with NAs in non gap filled CH4 data? 
+
+```{r}
+##PLAYING AROUND!
+BB1.model <- Fulldata %>%
+  filter(Site == "BB1")
+
+BB1.CH4.lm1 <- lm(logCH4_mgC~TS.5+WTH, data = BB1.model)
+summary(BB1.CH4.lm1)
+
+BB1.CH4.Ts <- lm(logCH4_mgC ~ TS.5, data = BB1.model)
+summary(BB1.CH4.Ts)
+
+BB1.CH4.WTH <- lm(logCH4_mgC ~ WTH, data = BB1.model)
+summary(BB1.CH4.WTH)
+
+(WTTS.BB1 <- ggplot(Fulldata, aes(WTH, logCH4_mgC, color = Site)) + 
+  geom_point(aes(size = TS.5))+
+    theme_bw())
+
+(WTTS.BB <- Fulldata %>% filter(WTH > -20) %>%
+  ggplot(., aes(WTH, logCH4_mgC, color = Site))+
+    geom_point(aes (size = TS.5)))
+```
+
+This website (below) is used for modelling tutorial 
+http://www.sthda.com/english/articles/40-regression-analysis/162-nonlinear-regression-essentials-in-r-polynomial-and-spline-regression-models/
+```{r, BB1 CH4 and WTH model}
+# Split the data into training and test set
+set.seed(123)
+training.samples <- BB1.model$logCH4_mgC %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.data  <- BB1.model[training.samples, ]
+test.data <- BB1.model[-training.samples, ]
+
+ggplot(BB1.model, aes(WTH, logCH4_mgC) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 2, raw = TRUE)) # this is plotting the polynomial relationship as found below
+  #stat_smooth() #this shows the relationship between CH4 flux and WTH is nonlinear
+
+lm1 <- lm(logCH4_mgC ~ poly(WTH, 2, raw = TRUE), data = BB1.model)
+summary(lm1)
+
+# Build the model
+model <- lm(logCH4_mgC ~ poly(WTH, 2, raw = TRUE), data = BB1.model)
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$logCH4_mgC),
+  R2 = R2(predictions, test.data$logCH4_mgC)
+)
+```
+
+
+
+```{r}
+BB2.model <- Fulldata %>%
+  filter(Site == "BB2")
+
+BB2.CH4.lm1 <- lm(logCH4_mgC~TS.5+WTH, data = BB2.model)
+summary(BB2.CH4.lm1)
+
+BB2.CH4.TS5 <- lm(logCH4_mgC~TS.5, data = BB2.model)
+summary(BB2.CH4.TS5)
+
+BB2.CH4.WTH<- lm(logCH4_mgC~(WTH^2), data = BB2.model)
+summary(BB2.CH4.WTH)
+```
+
+```{r, BB1 CH4 and WTH model}
+# Split the data into training and test set
+set.seed(123)
+training.samples <- BB2.model$logCH4_mgC %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.data  <- BB2.model[training.samples, ]
+test.data <- BB2.model[-training.samples, ]
+
+ggplot(BB2.model, aes(WTH, logCH4_mgC) ) +
+  geom_point() +
+  #stat_smooth(method = lm, formula = y ~ poly(x, 2, raw = TRUE)) # this is plotting the polynomial relationship as found below
+  stat_smooth() #this shows the relationship between CH4 flux and WTH is nonlinear
+
+lm2 <- lm(logCH4_mgC ~ poly(WTH, 3, raw = TRUE), data = BB2.model)
+summary(lm2)
+
+# Build the model
+model.2 <- lm(logCH4_mgC ~ poly(WTH, 3, raw = TRUE), data = BB2.model)
+# Make predictions
+predictions <- model.2 %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$logCH4_mgC),
+  R2 = R2(predictions, test.data$logCH4_mgC)
+)
+```
+
+
+
+CH4 response to 5cm soil temperature
+```{r, Temp response and Q10}
+
+
+CH4.Ts <- lm(logCH4_mgC ~ Site * TS.5, Fulldata)
+summary(CH4.Ts)
+
+# https://stats.stackexchange.com/questions/64927/how-do-i-plot-an-exponential-curve-in-r (below is following this)
+
+mdl1 <- lm(logCH4_mgC ~ TS.5, data = BB1.model)
+mdl2 <- lm(logCH4_mgC ~  I(TS.5^3), data = BB1.model)
+
+
+summary(mdl1)
+summary(mdl2) #higher R2
+
+prd <- data.frame(TS.5 = seq(0, 20, by = 0.5))
+
+result <- prd
+#result$mdl1 <- predict(mdl1, newdata = prd)
+result$mdl2 <- predict(mdl2, newdata = prd)
+
+result <-  melt(result, id.vars = "TS.5", variable.name = "model",
+                value.name = "fitted")
+ggplot(result, aes(x = TS.5, y = fitted)) +
+  theme_bw() +
+  geom_point(data = BB1.model, aes(x = TS.5, y = logCH4_mgC)) +
+  geom_line(aes(colour = model), size = 1)
+
+# https://agupubs.onlinelibrary.wiley.com/doi/10.1002/2017GB005644 - temp response estimation
+
+Q10.BB1 <- exp(10*0.012168)
+Q10.BB1 <- exp(10*0.0002439)
+
+mdl3 <- lm(logCH4_mgC ~ TS.5, data = BB2.model)
+mdl4 <- lm(logCH4_mgC ~ I(TS.5^3), data = BB2.model)
+
+prd2 <- data.frame(TS.5 = seq(0, 20, by = 0.5))
+
+result2 <- prd2
+#result2$mdl3 <- predict(mdl3, newdata = prd)
+result2$mdl4 <- predict(mdl4, newdata = prd2)
+
+result2 <-  melt(result2, id.vars = "TS.5", variable.name = "model",
+                value.name = "fitted")
+ggplot(result2, aes(x = TS.5, y = fitted)) +
+  theme_bw() +
+  geom_point(data = BB2.model, aes(x = TS.5, y = logCH4_mgC)) +
+  geom_line(aes(colour = model), size = 1)
+
+summary(mdl4) # higher R2
+summary(mdl3)
+
+Q10.BB2 <- exp(10*0.003796)
+Q10.BB2 <- exp(10*0.0001653)
+
+results <- full_join(result,result2)
+
+P1 <- Fulldata %>%
+  filter(TS.5 > '0' & logCH4_mgC > '1') %>%
+  ggplot(., aes(TS.5, logCH4_mgC, color= Site)) +
+  geom_point() +
+      scale_colour_manual(values = c("#0072B2", "#D55E00"))+
+  #geom_line(data = results, aes(TS.5, fitted, color=model))+
+  geom_line(color='#0072B2',data = result, aes(TS.5, y=fitted))+
+  geom_line(color='#D55E00',data = result2, aes(TS.5, y=fitted))+  ##geom_smooth(method=)
+  ylab(bquote('ln' ~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+  theme_bw()
+P1
+```
+ggpredict: https://cran.r-project.org/web/packages/ggiraphExtra/vignettes/ggPredict.html
+https://www.econometrics-with-r.org/8-1-a-general-strategy-for-modelling-nonlinear-regression-functions.html
+BB1 modeling CH4 response to temperature and WTH
+```{r}
+library(AER)
+# fit a simple linear model
+linear_model<- lm(logCH4_mgC ~ TS.5*Site, data = Fulldata)
+summary(linear_model)
+# fit the quadratic Model
+quadratic_model <- lm(logCH4_mgC~ TS.5 + I(TS.5^2) + WTH, data = BB1.model)
+summary(quadratic_model)
+
+# obtain the model summary
+coeftest(quadratic_model, vcov. = vcovHC, type = "HC1")
+
+# draw a scatterplot of the observations for income and test score
+plot(BB1.model$TS.5, BB1.model$logCH4_mgC,
+     col  = "steelblue",
+     pch = 20,
+     xlab = "TS.5",
+     ylab = "logCH4_mgC",
+     main = "Estimated Linear and Quadratic Regression Functions")
+
+# add a linear function to the plot
+abline(linear_model, col = "black", lwd = 2)
+
+# add quatratic function to the plot
+order_id <- order(BB1.model$TS.5)
+
+lines(x = BB1.model$TS.5[order_id], 
+      y = fitted(quadratic_model)[order_id],
+      col = "red", 
+      lwd = 2) 
+
+
+BB1.model$CH4.pred <- 4.88 - .24*(BB1.model$TS.5) + 0.013*(I(BB1.model$TS.5^2)) - 0.036*(BB1.model$WTH)
+plot(BB1.model$CH4.pred, BB1.model$logCH4_mgC)
+lm.1 <- lm(CH4.pred~logCH4_mgC, data = BB1.model)
+summary(lm.1)
+
+#USE THIS 30/11/2020#
+ggplot(BB1.model, aes(TS.5, logCH4_mgC))+geom_point() +
+  geom_smooth(method = "gam", formula = y ~ x + I(x^2))
+
+ggplot(BB1.model, aes(TS.5, logCH4_mgC))+geom_point() +
+     geom_line(aes(y = CH4.pred), size = 1)
+
+BB2.model %>% filter(Period == 'GS') %>%
+  lm(logCH4_mgC ~ TS.5)
+```
+```{r}
+# fit a simple linear model
+linear_model<- lm(logCH4_mgC ~ WTH+ I(WTH^3), data = BB2.model)
+summary(linear_model)
+
+plot(BB1.model$TS.5, BB1.model$logCH4_mgC)
+abline(linear_model)
+
+# fit the quadratic Model
+quadratic_model <- lm(logCH4_mgC~ I(TS.5^3) + WTH + I(WTH^3) , data = BB2.model)
+summary(quadratic_model)
+
+# obtain the model summary
+coeftest(quadratic_model, vcov. = vcovHC, type = "HC1")
+
+# draw a scatterplot of the observations for income and test score
+plot(BB1.model$TS.5, BB1.model$logCH4_mgC,
+     col  = "steelblue",
+     pch = 20,
+     xlab = "TS.5",
+     ylab = "logCH4_mgC",
+     main = "Estimated Linear and Quadratic Regression Functions")
+
+# add a linear function to the plot
+abline(linear_model, col = "black", lwd = 2)
+
+# add quatratic function to the plot
+order_id <- order(BB1.model$TS.5)
+
+lines(x = BB1.model$TS.5[order_id], 
+      y = fitted(quadratic_model)[order_id],
+      col = "red", 
+      lwd = 2) 
+
+```
+
+
+WTD : follow instructions from Turetsky in regards to filtering out values so that we are comparing the same things
+```{r}
+P2 <- Fulldata %>%
+  filter(WTH >-12.0) %>%
+  ggplot(., aes(WTH, ch4mgC, color= Site)) +
+  geom_point() +
+  theme_bw()
+P2
+
+CH4.WTH <- lm(logCH4_gC ~ Site * WTH, Fulldata)
+summary(CH4.WTH)
+
+```
+
+```{r}
+ER.TS5.P <- Fulldata %>%
+  #filter(TS.5 > '0') %>%
+  ggplot(., aes(TS.5, RecogC, color= Site)) +
+  geom_point()+
+  theme_bw()
+ER.TS5.P
+```
+
+Kruskal Wallis test:
+"Kruskal-Wallis test by rank is a non-parametric alternative to one-way ANOVA test, which extends the two-samples Wilcoxon test in the situation where there are more than two groups. It’s recommended when the assumptions of one-way ANOVA test are not met." - http://www.sthda.com/english/wiki/kruskal-wallis-test-in-r
+```{r, Kruskal-Wallis : CH4}
+summarystats <- group_by(Fulldata, Site) %>%
+  summarise(
+    count = n(),
+    mean = mean(ch4mgC, na.rm = TRUE),
+    sd = sd(ch4mgC, na.rm = TRUE),
+    median = median(ch4mgC, na.rm = TRUE),
+    IQR = IQR(ch4mgC, na.rm = TRUE)
+  )
+summarystats
+
+library("ggpubr")
+ggboxplot(Fulldata, x = "Site", y = "ch4mgC", 
+          color = "Site", palette = c("#00AFBB", "#E7B800"),
+          order = c("BB1", "BB2"),
+          ylab = "ch4mgC", xlab = "Site")
+
+kruskal.test(ch4mgC ~ Site, data = Fulldata)
+```
+```{r, Kruskal-Wallis : CH4}
+summarystats <- group_by(Fulldata, Site) %>%
+  summarise(
+    count = n(),
+    mean = mean(ch4mgC, na.rm = TRUE),
+    sd = sd(ch4mgC, na.rm = TRUE),
+    median = median(ch4mgC, na.rm = TRUE),
+    IQR = IQR(ch4mgC, na.rm = TRUE)
+  )
+summarystats
+
+library("ggpubr")
+ggboxplot(Fulldata, x = "Site", y = "ch4mgC", 
+          color = "Site", palette = c("#00AFBB", "#E7B800"),
+          order = c("BB1", "BB2"),
+          ylab = "ch4mgC", xlab = "Site")
+
+kruskal.test(logCH4_mgC ~ Site, data = Fulldata)
+
+```
+
+```{r, Kruskal-Wallis : ER}
+summarystats <- group_by(Fulldata, Site) %>%
+  summarise(
+    count = n(),
+    mean = mean(RecogC, na.rm = TRUE),
+    sd = sd(RecogC, na.rm = TRUE),
+    median = median(RecogC, na.rm = TRUE),
+    IQR = IQR(RecogC, na.rm = TRUE)
+  )
+summarystats
+
+library("ggpubr")
+ggboxplot(Fulldata, x = "Site", y = "RecogC", 
+          color = "Site", palette = c("#00AFBB", "#E7B800"),
+          order = c("BB1", "BB2"),
+          ylab = "RecogC", xlab = "Site")
+
+kruskal.test(RecogC ~ Site, data = Fulldata)
+```
+
+```{r, Kruskal-Wallis : GPP}
+summarystats <- group_by(Fulldata, Site) %>%
+  summarise(
+    count = n(),
+    mean = mean(GPP_DT, na.rm = TRUE),
+    sd = sd(GPP_DT, na.rm = TRUE),
+    median = median(GPP_DT, na.rm = TRUE),
+    IQR = IQR(GPP_DT, na.rm = TRUE)
+  )
+summarystats
+
+library("ggpubr")
+ggboxplot(Fulldata, x = "Site", y = "GPP_DT", 
+          color = "Site", palette = c("#00AFBB", "#E7B800"),
+          order = c("BB1", "BB2"),
+          ylab = "GPP_DT", xlab = "Site")
+
+kruskal.test(GPP_f ~ Site, data = Fulldata)
+```
+
+```{r}
+P1.1 <- FulldataGS %>%
+  filter(TS.5 > '0') %>%
+  ggplot(., aes(TS.5, ch4mgC, color= Site)) +
+  geom_point() +
+  theme_bw()
+P1.1
+
+P1.2 <- FulldataNGS %>%
+  filter(TS.5 > '0') %>%
+  ggplot(., aes(TS.5, ch4mgC, color= Site)) +
+  geom_point() +
+  theme_bw()
+P1.2
+
+P1.3 <- BB1.model %>%
+  filter(TS.5 > '0') %>%
+  ggplot(., aes(TS.5, ch4mgC, color= Period)) +
+  geom_point() +
+  theme_bw()
+P1.3
+
+P1.4 <- BB2.model %>%
+  filter(TS.5 > '0') %>%
+  ggplot(., aes(TS.5, ch4mgC, color= Period)) +
+  geom_point() +
+  theme_bw()
+P1.4
+```
