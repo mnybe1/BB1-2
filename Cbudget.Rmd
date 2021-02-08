@@ -449,7 +449,20 @@ BB.daily.sum <- BB.daily %>%
 ```
 ### WTH
 ```{r}
+#To linearly extrapolate to gap fill
+WTH.lm <-BB.daily %>% 
+  select(c(WTH, Site, jday)) %>% 
+           pivot_wider(names_from = Site, values_from = WTH)
 
+WTH.lm.1 <- lm(BB1~BB2, WTH.lm)
+summary(WTH.lm.1)
+coef.WTH <- 0.504987
+intercept.WTH <- 5.233582
+
+WTH.lm$BB1[which(is.na(WTH.lm$BB1))] = intercept.WTH + coef.WTH * WTH.lm$BB2[which(is.na(WTH.lm$BB1))] 
+
+BB.daily$WTH<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$WTH)
+BB.daily$WTH[which(is.na(BB.daily$WTH))] = WTH.lm$BB1
 ```
 
 ### Soil temperature
@@ -463,7 +476,7 @@ coef.TS5 <- 0.8922
 intercept.TS5 <- 1.9279
 
 TS5.lm$BB1[which(TS5.lm$BB1 < "0")] = NA
-TS5.lm$BB1[which(is.na(TS5.lm$BB1))] = intercept.TS5 + coef.TS5 + TS5.lm$BB2[which(is.na(TS5.lm$BB1))] 
+TS5.lm$BB1[which(is.na(TS5.lm$BB1))] = intercept.TS5 + coef.TS5 * TS5.lm$BB2[which(is.na(TS5.lm$BB1))] 
 
 BB.daily$TS.5<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.5)
 BB.daily$TS.5[which(is.na(BB.daily$TS.5))] = TS5.lm$BB1
@@ -494,7 +507,7 @@ coef.TS10 <- 0.93555
 intercept.TS10 <- 1.44584
 
 TS10.lm$BB1[which(TS10.lm$BB1 < "0")] = NA
-TS10.lm$BB1[which(is.na(TS10.lm$BB1))] = intercept.TS10 + coef.TS10 + TS10.lm$BB2[which(is.na(TS10.lm$BB1))] 
+TS10.lm$BB1[which(is.na(TS10.lm$BB1))] = intercept.TS10 + coef.TS10 * TS10.lm$BB2[which(is.na(TS10.lm$BB1))] 
 
 BB.daily$TS.10<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.10)
 BB.daily$TS.10[which(is.na(BB.daily$TS.10))] = TS10.lm$BB1
