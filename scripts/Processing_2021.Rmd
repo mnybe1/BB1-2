@@ -1,0 +1,54 @@
+---
+title: "Processing_2021"
+author: "Marion Nyberg"
+date: "08/02/2021"
+output: html_document
+---
+
+```{r setup and load libraries, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(caret)
+library(leaps)
+#library(MASS)
+library(car)
+library(dplyr)
+library(plyr)
+library(ggplot2)
+library(lubridate)
+library(naniar)
+library(tidyr)
+library(plotly)
+library(knitr)
+library(data.table)
+library(kableExtra)
+library(ggsci)
+library(effects)
+
+rm(list=ls())
+```
+
+```{r set working directory and load data}
+setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data")
+
+Full <- read.csv("Full.csv")
+```
+
+## {.tabset}
+
+### Environmental variables
+
+
+Need to add max and min temperatures as a cloud/shadow, and Environment Canada climate 30 year average? 
+```{r Air temperature}
+(Ta.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
+  geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("Air temperature (deg C)")+
+  xlab("Month") +
+   #ggtitle("Air temperature at BB1 and BB2")+
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw())
+ggplotly(Ta.p)
+```
