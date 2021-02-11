@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup and load libraries, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
 
 library(caret)
 library(leaps)
@@ -31,18 +31,28 @@ rm(list=ls())
 ```{r set working directory and load data}
 setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data")
 
-Full <- read.csv("Full.csv")
+Full <- read.csv("Full.csv") #All data (GS and NGS), below 2 new data frames separated into GS and NGS
+FullGS <- Full[(Full$jday >= 92 & Full$jday <= 274), ] 
+FullNGS <-Full[(Full$jday < 92 | Full$jday >=275), ] 
 ```
 
-## {.tabset}
+## {.tabset .tabset-fade}
+
+### To do
+
+- Fix up precipitation data
+- NDVI - make sure gaps are filled
+- Using 10 year average Environment Canada data, calculate deviattion from the mean for both sites
+- Environment/flux relationships
+- Calculate radiative forcing
 
 ### Environmental variables
 
+__Air temperature__
 
-Need to add max and min temperatures as a cloud/shadow, and Environment Canada climate 30 year average? 
 ```{r Air temperature}
 (Ta.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
-  geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
+  #geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Air temperature (deg C)")+
   xlab("Month") +
@@ -50,5 +60,273 @@ Need to add max and min temperatures as a cloud/shadow, and Environment Canada c
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
   theme_bw())
-ggplotly(Ta.p)
+#ggplotly(Ta.p)
 ```
+
+__Relative humidity__
+
+```{r Relative humidity}
+(RH.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
+  #geom_ribbon(aes(ymin = RH_min -1 , ymax = RH_max +1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("Relative humidity (%)")+
+  xlab("Month") +
+   #ggtitle("Air temperature at BB1 and BB2")+
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw())
+#ggplotly(RH.p)
+```
+
+__Water table height__
+
+```{r Water table height}
+(WTH.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
+  #geom_ribbon(aes(ymin = WTH._min -1 , ymax = WTH._max+1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("Water table height (cm)")+
+  xlab("Month") +
+   #ggtitle("Air temperature at BB1 and BB2")+
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw())
+#ggplotly(WTH.p)
+```
+
+__5cm soil temperature__
+
+```{r T5cm Soil temperature}
+(TS.5.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
+  #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("5cm soil temperature (deg C)")+
+  xlab("Month") +
+   #ggtitle("Air temperature at BB1 and BB2")+
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw())
+#ggplotly(TS.5.p)
+```
+
+__10cm soil temperature__
+
+```{r T10cm Soil temperature}
+(TS.10.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
+  #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("10cm soil temperature (deg C)")+
+  xlab("Month") +
+   #ggtitle("Air temperature at BB1 and BB2")+
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw())
+#ggplotly(TS.10.p)
+```
+
+<!-- NEED TO FIX PRECIP -->
+```{r Precipitation with EC, include=FALSE}
+#Load Environment Canada precipitation data and re-format:
+EC_precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/EC_precip/EC_precip.csv') 
+EC_precip$Timestamp <- as.POSIXlt(EC_precip$Timestamp, format = "%Y-%m-%d")
+EC_precip$jday <- yday(EC_precip$Timestamp)
+EC_precip$Site <- 'EC'
+EC_precip$month <- months(EC_precip$Timestamp, abbreviate = TRUE)
+EC_precip <- EC_precip %>%
+   filter(Year >= "2020") %>%
+   select(month, jday, Site, Precip)
+
+Precip <- Full %>% 
+   select(Precip_mean, Site, jday, month) %>%
+   group_by(Site, month) %>%
+   mutate(Precip = Precip_mean*100) %>%
+   full_join(., EC_precip) %>%
+   mutate(Precip.cumsum = cumsum(Precip))
+
+P.p <- ggplot(Precip, aes(month, Precip.cumsum, fill = Site)) + 
+  geom_bar(stat = "identity", position = 'dodge') +
+   scale_x_discrete(limits = month.abb) +
+      ylab("Total monthly precipitation (mm)")+
+   scale_fill_aaas()+
+  theme_bw()
+ggplotly(P.p)
+```
+
+
+### CO2 and CH4 fluxes
+
+
+```{r read in daily mean CO2 and CH4 fluxes}
+Flux.daily <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/scripts/flux.csv")
+FluxGS <- Flux.daily[(Flux.daily$jday >= 92 & Flux.daily$jday <= 274), ] 
+FluxNGS <-Flux.daily[(Flux.daily$jday < 92 | Flux.daily$jday >=275), ] 
+```
+
+__Cumulative NEE__
+
+By the end of 2020, BB1 was a CO2 sink, but BB2 was a source of CO2 to the atmosphere. Despite higher GPP at BB2, ER is also much greater, which is leading to it acting as a CO2 source. When only considering CO2, this is not an effective management strategy, or it is at a stage in it's recovery trajectory where it is a source of CO2 to the atmosphere.
+
+- Daily mean cumulative NEE  (gC m-2 day-1)
+- Using daily averages of NEEgC_f values
+```{r Cumulative NEE}
+(NEEcum.p <-Flux.daily %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NEEcum, color = Site)) +
+  geom_line(aes(color = Site))+
+  ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
+  xlab("Month")+
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw())
+
+#To make a table showing final values:
+Flux.daily %>%
+  dplyr::select(c(Site, NEEcum, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = NEEcum) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total NEE") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+__Cumulative GPP__
+
+```{r Cumulative GPP}
+(GPPcum.p <-Flux.daily %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), GPPcum_f, color = Site)) +
+  geom_line()+
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative GPP (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_color_aaas()+
+  theme_bw())
+
+Flux.daily %>%
+  dplyr::select(c(Site, GPPcum_f, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = GPPcum_f) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total GPP") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+__Ecosystem respiration__
+
+```{r Cumulative ER}
+(Recocum.p <-Flux.daily %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Recocum, color = Site)) +
+  geom_line()+
+    #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  xlab("Month")+
+ scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_color_aaas()+
+ theme_bw())#+
+  #theme(legend.position = "none")
+
+Flux.daily %>%
+  dplyr::select(c(Site, Recocum, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = Recocum) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total REco") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+
+__CH4 flux__
+
+CH4 flux is higher at BB1 than BB2, but how does this affect the annual GHG budget? 
+
+```{r CH4 flux}
+(CH4cum.p <-Flux.daily %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), CH4cum_f_RF_gC, color = Site)) +
+  geom_line()+
+    #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('Cumulative' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_color_aaas()+
+  theme_bw())
+
+Flux.daily %>%
+  dplyr::select(c(Site, CH4cum_f_RF_gC, jday)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = CH4cum_f_RF_gC) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "Total CH4 flux (g C m-2 day-1") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+### GHG budget
+
+```{r calculating CO2 equivalents}
+GWPCH4.20 <- 84 
+GWPCH4.100 <- 28 # no feedback
+SGWPCH4.100 <- 45
+SGWPCH4.20 <- 96
+
+CO2eq <- Flux.daily %>% 
+  group_by(Site,month_local) %>%
+  summarise(NEE = sum(NEEgC_f),
+            CH4 = sum(CH4gC_f_RF)) %>%
+  mutate(CO2_CH4eq100 = GWPCH4.100 * (CH4 * (16.04/12.01)),
+         CO2_CH4eq20 = GWPCH4.20 * (CH4 * (16.04/12.01)),
+         CO2_CO2eq = NEE * (44.01/12.01),
+         SGWP100CH4 = SGWPCH4.100 * (CH4 * (16.04/12.01)),
+         SGWP20CH4 = SGWPCH4.20 * (CH4 * (16.04/12.01))) %>%
+  mutate(GHG_eq100 = CO2_CH4eq100 + CO2_CO2eq,
+         GHG_eq20 = CO2_CH4eq20 + CO2_CO2eq) %>%
+  group_by(Site) %>%
+  mutate(total.20yrGHG = cumsum(GHG_eq20),
+         total.100yrGHG = cumsum(GHG_eq100),
+         cumCO2 = cumsum(CO2_CO2eq),
+         cumCH420yr = cumsum(CO2_CH4eq20),
+         cumCH4100yr = cumsum(CO2_CH4eq100),
+         SGWPcumCH4100yr = cumsum(SGWP100CH4),
+         SGWPcumCH420yr = cumsum(SGWP20CH4),
+         cumCH4gC20yrSGWP = cumsum(CH4)*SGWPCH4.20,
+         cumCH4gC100yrSGWP = cumsum(CH4)*SGWPCH4.100) %>%
+  mutate(cumNEESGWP = cumsum(NEE) - cumsum(CH4))%>%
+  mutate(cumNEECO2 = cumNEESGWP *(44.01/12.01)) %>%
+  mutate(SGWPtotal20 = cumNEECO2 + cumCH4gC20yrSGWP) %>%
+  mutate(SGWPtotal100 = cumNEECO2 + cumCH4gC100yrSGWP)
+```
+
+__SGWP__
+
+On both a 20 and 100 year timescale, both sites act a net source of warming to the atmosphere. On a 20 year timescale, the higher CH4 emissions at BB1, coupled with being a CO2 sink, lead to the site having a greater warming effect. However, on a 100 year timescale, BB2 has a much greater warming effect. This suggests that over a longer timescale, if the site is a CO2 sink (BB1), having higher CH4 emissions will not offset the CO2 sink potential.
+ - On a short timescale, it is more important to have low CH4 emissions
+ - On a long timescale, it is more important to be a CO2 sink
+
+```{r SGWP}
+CO2eq %>%
+  dplyr::select(c(Site, SGWPtotal20, month_local)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = SGWPtotal20) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "20yr SWGP") %>%
+  kable_classic(html_font = "Cambria")
+
+CO2eq %>%
+  dplyr::select(c(Site, SGWPtotal100, month_local)) %>%
+  group_by(Site) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = SGWPtotal100) %>%
+  summarise(BB1 = last(na.omit(BB1)),
+            BB2 = last(na.omit(BB2))) %>%
+  kbl(caption = "100yr SWGP") %>%
+  kable_classic(html_font = "Cambria")
+```
+
+### Environmental effects on CO2 and CH4 fluxes
+
