@@ -7,6 +7,9 @@ output: html_document
 
 ```{r setup and load libraries, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+knitr::opts_chunk$set(root.dir = '/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2')
+
+
 
 library(caret)
 library(leaps)
@@ -29,11 +32,13 @@ rm(list=ls())
 ```
 
 ```{r set working directory and load data}
-setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data")
+#setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2")
 
-Env <- read.csv("Full.csv") #All data (GS and NGS), below 2 new data frames separated into GS and NGS
-EnvGS <- Env[(Env$jday >= 92 & Env$jday <= 274), ] 
-EnvNGS <-Env[(Env$jday < 92 | Env$jday >=275), ] 
+Env.input_file <- "data/Full.csv" #All data (GS and NGS), below 2 new data frames separated into GS and NGS
+Env.input_data <- read.csv(Env.input_file) 
+
+ind.GS <- (Env.input_data$jday >= 92 & Env.input_data$jday <= 274)
+ind.NGS <- (Env.input_data$jday < 92 | Env.input_data$jday >=275)
 ```
 
 ## {.tabset .tabset-fade}
@@ -49,14 +54,15 @@ EnvNGS <-Env[(Env$jday < 92 | Env$jday >=275), ]
 - Calculate radiative forcing
 - Compare my values to Nick and Brenda's to assess inter-annual variability
 - Add in statistical analysis
-- For seasonal drivers, look more at end or see if ER or GPP at one site and specific season is driving it more or less. 
+- For seasonal drivers, look more at end or see if ER or GPP at one site and specific season is driving it more or less.
+- Write a function to create timeseries plots and tables
 
 ### Environmental variables
 
 __Air temperature__
 
 ```{r Air temperature}
-(Ta.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
+(Ta.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Air temperature (deg C)")+
@@ -71,7 +77,7 @@ __Air temperature__
 __Relative humidity__
 
 ```{r Relative humidity}
-(RH.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
+(RH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = RH_min -1 , ymax = RH_max +1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Relative humidity (%)")+
@@ -86,7 +92,7 @@ __Relative humidity__
 __Water table height__
 
 ```{r Water table height}
-(WTH.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
+(WTH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = WTH._min -1 , ymax = WTH._max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Water table height (cm)")+
@@ -101,7 +107,7 @@ __Water table height__
 __5cm soil temperature__
 
 ```{r T5cm Soil temperature}
-(TS.5.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
+(TS.5.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("5cm soil temperature (deg C)")+
@@ -116,7 +122,7 @@ __5cm soil temperature__
 __10cm soil temperature__
 
 ```{r T10cm Soil temperature}
-(TS.10.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
+(TS.10.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("10cm soil temperature (deg C)")+
@@ -140,7 +146,7 @@ EC_precip <- EC_precip %>%
    filter(Year >= "2020") %>%
    select(month, jday, Site, Precip)
 
-Precip <- Env %>% 
+Precip <- Env.input_data %>% 
    select(Precip_mean, Site, jday, month) %>%
    group_by(Site, month) %>%
    mutate(Precip = Precip_mean*100) %>%
@@ -162,9 +168,11 @@ ggplotly(P.p)
 
 ```{r read in daily mean CO2 and CH4 fluxes}
 # This file has daily averaged gap filled and non gap filled data
-Flux.daily <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/flux.csv") 
-FluxGS <- Flux.daily[(Flux.daily$jday >= 92 & Flux.daily$jday <= 274), ] 
-FluxNGS <-Flux.daily[(Flux.daily$jday < 92 | Flux.daily$jday >=275), ] 
+Flux.input_file <- "data/flux.csv" 
+Flux.input_data <- read.csv(Flux.input_file)
+
+Flux.ind.GS <- Flux.input_data[(Flux.input_data$jday >= 92 & Flux.input_data$jday <= 274), ] 
+Flux.ind.NGS <-Flux.input_data[(Flux.input_data$jday < 92 | Flux.input_data$jday >=275), ] 
 ```
 
 __Cumulative NEE__
@@ -174,7 +182,7 @@ By the end of 2020, BB1 was a CO2 sink, but BB2 was a source of CO2 to the atmos
 - Daily mean cumulative NEE  (gC m-2 day-1)
 - Using daily averages of NEEgC_f values
 ```{r Cumulative NEE}
-(NEEcum.p <-Flux.daily %>% 
+(NEEcum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NEEcum, color = Site)) +
   geom_line(aes(color = Site))+
   ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
@@ -184,7 +192,7 @@ By the end of 2020, BB1 was a CO2 sink, but BB2 was a source of CO2 to the atmos
   theme_bw())
 
 #To make a table showing final values:
-Flux.daily %>%
+Flux.input_data %>%
   dplyr::select(c(Site, NEEcum, jday)) %>%
   group_by(Site) %>%
   mutate(row = row_number()) %>%
@@ -198,7 +206,7 @@ Flux.daily %>%
 __Cumulative GPP__
 
 ```{r Cumulative GPP}
-(GPPcum.p <-Flux.daily %>% 
+(GPPcum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), GPPcum_f, color = Site)) +
   geom_line()+
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
@@ -208,7 +216,7 @@ __Cumulative GPP__
     scale_color_aaas()+
   theme_bw())
 
-Flux.daily %>%
+Flux.input_data %>%
   dplyr::select(c(Site, GPPcum_f, jday)) %>%
   group_by(Site) %>%
   mutate(row = row_number()) %>%
@@ -222,7 +230,7 @@ Flux.daily %>%
 __Ecosystem respiration__
 
 ```{r Cumulative ER}
-(Recocum.p <-Flux.daily %>% 
+(Recocum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Recocum, color = Site)) +
   geom_line()+
     #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
@@ -233,7 +241,7 @@ __Ecosystem respiration__
  theme_bw())#+
   #theme(legend.position = "none")
 
-Flux.daily %>%
+Flux.input_data %>%
   dplyr::select(c(Site, Recocum, jday)) %>%
   group_by(Site) %>%
   mutate(row = row_number()) %>%
@@ -250,7 +258,7 @@ __CH4 flux__
 CH4 flux is higher at BB1 than BB2, but how does this affect the annual GHG budget? 
 
 ```{r CH4 flux}
-(CH4cum.p <-Flux.daily %>% 
+(CH4cum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), CH4cum_f_RF_gC, color = Site)) +
   geom_line()+
     #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
@@ -260,7 +268,7 @@ CH4 flux is higher at BB1 than BB2, but how does this affect the annual GHG budg
     scale_color_aaas()+
   theme_bw())
 
-Flux.daily %>%
+Flux.input_data %>%
   dplyr::select(c(Site, CH4cum_f_RF_gC, jday)) %>%
   group_by(Site) %>%
   mutate(row = row_number()) %>%
@@ -279,7 +287,7 @@ GWPCH4.100 <- 28 # no feedback
 SGWPCH4.100 <- 45
 SGWPCH4.20 <- 96
 
-CO2eq <- Flux.daily %>% 
+CO2eq <- Flux.input_data %>% 
   group_by(Site,month_local) %>%
   summarise(NEE = sum(NEEgC_f),
             CH4 = sum(CH4gC_f_RF)) %>%
@@ -342,7 +350,7 @@ CO2eq %>%
 nonGF <-Flux.Env1 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/BB_fulldata.csv") %>%
   select(c("jday","Site", 39:48))
 
-Flux.Env <- right_join(Flux.daily, Env,  by = c("jday", "Site")) %>%
+Flux.Env <- right_join(Flux.input_data, Env.input_data,  by = c("jday", "Site")) %>%
    select(-c("TS.30_mean", "TS.30_min", "TS.30_max", "X.x", "X.y", "month_local")) %>% #remove unnecessary variables
    right_join(nonGF, by = "jday", "Site")
 
