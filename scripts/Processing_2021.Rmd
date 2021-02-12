@@ -6,10 +6,8 @@ output: html_document
 ---
 
 ```{r setup and load libraries, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE)
-knitr::opts_chunk$set(root.dir = '/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2')
 
-
+knitr::opts_knit$set(echo = FALSE, message = FALSE, root.dir = 'wd')
 
 library(caret)
 library(leaps)
@@ -29,10 +27,12 @@ library(ggsci)
 library(effects)
 
 rm(list=ls())
+
 ```
 
 ```{r set working directory and load data}
-#setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2")
+wd <- '~/Google Drive/Micromet Lab/People/2019-Marion Nyberg/BB1-2'
+setwd(wd)
 
 Env.input_file <- "data/Full.csv" #All data (GS and NGS), below 2 new data frames separated into GS and NGS
 Env.input_data <- read.csv(Env.input_file) 
@@ -167,7 +167,9 @@ ggplotly(P.p)
 
 
 ```{r read in daily mean CO2 and CH4 fluxes}
-# This file has daily averaged gap filled and non gap filled data
+setwd(wd)
+
+# This file has daily averaged gap filled data
 Flux.input_file <- "data/flux.csv" 
 Flux.input_data <- read.csv(Flux.input_file)
 
@@ -346,15 +348,17 @@ CO2eq %>%
 
 ```{r join flux and environmental data}
 #Joining daily average flux (gap filled and non gap filled) and environmental data
+setwd(wd)
 
-nonGF <-Flux.Env1 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/BB_fulldata.csv") %>%
-  select(c("jday","Site", 39:48))
+NGFflux.input_file <- "data/BB_fulldata.csv"
+NGFflux.input_data <- read.csv(NGFflux.input_file) %>%
+  select(c("Site", "jday", 39:48, ))
 
 Flux.Env <- right_join(Flux.input_data, Env.input_data,  by = c("jday", "Site")) %>%
    select(-c("TS.30_mean", "TS.30_min", "TS.30_max", "X.x", "X.y", "month_local")) %>% #remove unnecessary variables
-   right_join(nonGF, by = "jday", "Site")
+   right_join(NGFflux.input_data, by = "jday", "Site")
 
-write.csv(Flux.Env, "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/
-FluxEnv.csv")
+Final.output_file <-"data/Final.csv"
+write.csv(Flux.Env, Final.output_file)
 ```
 
