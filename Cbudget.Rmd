@@ -86,6 +86,8 @@ Daily.nGF <- Daily.nGF %>%
   
 Daily.nGF$month_local <- as.factor(Daily.nGF$month_local)
 
+write.csv(Daily.nGF, "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/fluxNGF.csv")
+
 Daily <- BB %>%
   ddply(c("jday", "Site", "month_local"), summarize,
         NEE_f = mean(NEE_f),
@@ -132,6 +134,8 @@ BB2.daily <- Daily %>%
 
 Daily <- full_join(BB1.daily, BB2.daily)
 Daily$month_local <- as.factor(Daily$month_local)
+
+write.csv(Daily, "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/flux.csv")
 
 DailyGS <- Daily[(Daily$jday >= 92 & Daily$jday <= 274), ] 
 DailyNGS <-Daily[(Daily$jday < 92 | Daily$jday >=275), ] 
@@ -380,7 +384,7 @@ BB2<-fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\
   rowwise() %>%
   mutate(TS.5 = mean(c(SOIL_TEMP_1_5CM, SOIL_TEMP_2_5CM, SOIL_TEMP_3_5CM))) %>%
   mutate(TS.10 = mean(c(SOIL_TEMP_1_10CM, SOIL_TEMP_2_10CM, SOIL_TEMP_3_10CM))) %>%
-  mutate(TS.30 = mean(c(SOIL_TEMP_1_30CM, SOIL_TEMP_2_30CM, SOIL_TEMP_3_30CM))) %>%
+  mutate(TaS.30= mean(c(SOIL_TEMP_1_30CM, SOIL_TEMP_2_30CM, SOIL_TEMP_3_30CM))) %>%
   rename("WTH1" ="WTH") %>%
   filter(DATE >= '2020-01-01 01:00:00') 
 BB2$Site <- "BB2"
@@ -391,7 +395,7 @@ BB2$DATE <- as.POSIXct(BB2$DATE, format="%Y-%m-%d %H:%M:%S", tz="UTC")
 ind <- which(BB2$DATE <= '2020-03-29 00:00:00') #Use either this one or the one below?
 BB2$RH_2M[ind] <- NA
 
-BB1 <- fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/met_merged/met_corrected_gapfilled.csv")%>%
+BB1 <- fread("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/met_merged/met_corrected_gapfilled.csv") %>%
   rename(c("TS.5" = "SOIL_TEMP_5CM", "TS.10" = "SOIL_TEMP_10CM"), "WTH1" = "WTH_absolute") %>%
   filter(DATE >= '2020-01-01 01:00:00')
 BB1$Site <- "BB1"
@@ -424,36 +428,54 @@ BB.daily$month <- months(BB.daily$DATE, abbreviate = TRUE)
 ```
 
 ```{r}
-BB.daily <- BB.daily%>%
-  ddply(c("jday", "Site", "month"), summarize,
-        TS.5 = mean(TS.5),
-        TS.10 = mean(TS.10),
-        TS.30 = mean(TS.30),
-        RH = mean(RH_2M),
-        PARin = mean(INCOMING_PAR),
-        SWin = mean(SHORTWAVE_IN),
-        VPD = mean (VPD),
-        Precip = sum(PRECIP),
-        Ta = mean(AIR_TEMP_2M),
-        WTH = mean(WTH1),
-        SWC = mean(SVWC))
+library(summarytools)
+library(broom)
+library(purrr)
+library(magrittr)
 
-summary(BB.daily)
+BB.daily <- BB.daily %>% rename(RH = RH_2M,
+                   PARin = INCOMING_PAR,
+                   SWin = SHORTWAVE_IN,
+                   Ta = AIR_TEMP_2M, 
+                   WTH. = WTH1, 
+                   SWC = SVWC,
+                   Precip = PRECIP)
 
-BB.daily.sum <- BB.daily %>%
-  select(jday, Site, Ta, Precip, WTH) %>%
-  group_by("Site") %>%
-  ddply("Site", summarize,
-        TA = mean(Ta),
-        PRECIP = mean(Precip),
-        WTH = mean(WTH))
+BB.daily <- BB.daily %>% 
+  select(., TS.5, TS.10, RH, PARin, SWin, VPD, Ta, WTH., SWC, Precip, jday, Site, month) %>%
+  group_by(jday, Site, month) %>%
+  summarise_all(list(mean = mean, min = min, max = max))
+
+
+#BB.daily <- BB.daily%>%
+ # ddply(c("jday", "Site", "month"), summarize,
+  #      TS.5. = mean(TS.5),
+   #     TS.5min = min(TS.5),
+    #    TS.10_mean. = mean(TS.10_mean),
+     #   TS.30 = mean(TS.30),
+      #  RH = mean(RH_2M),
+       # PARin = mean(INCOMING_PAR),
+        #SWin = mean(SHORTWAVE_IN),
+        #VPD = mean (VPD),
+        #Precip = sum(PRECIP),
+        #Ta = mean(AIR_TEMP_2M),
+        #WTH = mean(WTH1),
+        #SWC = mean(SVWC))
+
+#BB.daily.sum <- BB.daily %>%
+ # select(jday, Site, Ta, Precip, WTH) %>%
+  #group_by("Site") %>%
+  #ddply("Site", summarize,
+   #     TA = mean(Ta),
+    #    PRECIP = mean(Precip),
+     #   WTH = mean(WTH))
 ```
 ### WTH
 ```{r}
 #Linearly extrapolate to gap fill
 WTH.lm <-BB.daily %>% 
-  select(c(WTH, Site, jday)) %>% 
-           pivot_wider(names_from = Site, values_from = WTH)
+  select(c(WTH._mean, Site, jday)) %>% 
+           pivot_wider(names_from = Site, values_from = WTH._mean)
 
 WTH.lm.1 <- lm(BB1~BB2, WTH.lm)
 summary(WTH.lm.1)
@@ -462,16 +484,16 @@ intercept.WTH <- 5.233582
 
 WTH.lm$BB1[which(is.na(WTH.lm$BB1))] = intercept.WTH + coef.WTH * WTH.lm$BB2[which(is.na(WTH.lm$BB1))] 
 
-BB.daily$WTH<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$WTH)
-BB.daily$WTH[which(is.na(BB.daily$WTH))] = WTH.lm$BB1
+BB.daily$WTH._mean<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$WTH._mean)
+BB.daily$WTH._mean[which(is.na(BB.daily$WTH._mean))] = WTH.lm$BB1
 ```
 
 ### Soil temperature
 ```{r}
 #Linearly exptrapolate to gap fill
 TS5.lm <-BB.daily %>% 
-  select(c(TS.5, Site, jday)) %>% 
-           pivot_wider(names_from = Site, values_from = TS.5)
+  select(c(TS.5_mean, Site, jday)) %>% 
+           pivot_wider(names_from = Site, values_from = TS.5_mean)
 TS5.lm.1 <- lm(BB1~BB2, TS5.lm)
 summary(TS5.lm.1)
 coef.TS5 <- 0.8922
@@ -480,13 +502,13 @@ intercept.TS5 <- 1.9279
 TS5.lm$BB1[which(TS5.lm$BB1 < "0")] = NA
 TS5.lm$BB1[which(is.na(TS5.lm$BB1))] = intercept.TS5 + coef.TS5 * TS5.lm$BB2[which(is.na(TS5.lm$BB1))] 
 
-BB.daily$TS.5<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.5)
-BB.daily$TS.5[which(is.na(BB.daily$TS.5))] = TS5.lm$BB1
+BB.daily$TS.5_mean<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.5_mean)
+BB.daily$TS.5_mean[which(is.na(BB.daily$TS.5_mean))] = TS5.lm$BB1
 
 BB.dailyGS <- BB.daily[(BB.daily$jday >= 92 & BB.daily$jday <= 274), ] 
 BB.dailyNGS <-BB.daily[(BB.daily$jday < 92 | BB.daily$jday >=275), ] 
 
-TS5.p <- ggplot(BB.daily, aes(jday, TS.5)) + 
+TS5.p <- ggplot(BB.daily, aes(jday, TS.5_mean)) + 
   geom_line(aes (color = Site)) +
     scale_colour_manual(values = c("#0072B2", "#D55E00"))+
   ylab("5cm soil temperature (deg C)") +
@@ -495,26 +517,26 @@ TS5.p <- ggplot(BB.daily, aes(jday, TS.5)) +
 TS5.p
 ggplotly(TS5.p)
 
-kruskal.test(TS.5~Site, data = BB.daily)
-kruskal.test(TS.5~Site, data = BB.dailyGS)
-kruskal.test(TS.5~Site, data = BB.dailyNGS)
+kruskal.test(TS.5_mean~Site, data = BB.daily)
+kruskal.test(TS.5_mean~Site, data = BB.dailyGS)
+kruskal.test(TS.5_mean~Site, data = BB.dailyNGS)
 
 
 TS10.lm <-BB.daily %>% 
-  select(c(TS.10, Site, jday)) %>% 
-           pivot_wider(names_from = Site, values_from = TS.10)
+  select(c(TS.10_mean, Site, jday)) %>% 
+           pivot_wider(names_from = Site, values_from = TS.10_mean)
 TS10.lm.1 <- lm(BB1~BB2, TS10.lm)
 summary(TS10.lm.1)
-coef.TS10 <- 0.93555 
-intercept.TS10 <- 1.44584
+coef.TS10 <- 0.91690 
+intercept.TS10 <- 1.73055
 
 TS10.lm$BB1[which(TS10.lm$BB1 < "0")] = NA
 TS10.lm$BB1[which(is.na(TS10.lm$BB1))] = intercept.TS10 + coef.TS10 * TS10.lm$BB2[which(is.na(TS10.lm$BB1))] 
 
-BB.daily$TS.10<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.10)
-BB.daily$TS.10[which(is.na(BB.daily$TS.10))] = TS10.lm$BB1
+BB.daily$TS.10_mean<- ifelse(BB.daily$Site == 'BB1', NA, BB.daily$TS.10_mean)
+BB.daily$TS.10_mean[which(is.na(BB.daily$TS.10_mean))] = TS10.lm$BB1
 
-TS10.p <- ggplot(BB.daily, aes(jday, TS.10)) + 
+TS10.p <- ggplot(BB.daily, aes(jday, TS.10_mean)) + 
   geom_line(aes (color = Site)) +
    ylab("10cm soil temperature (deg C)") +
   xlab("Julian DOY") +
@@ -522,35 +544,34 @@ TS10.p <- ggplot(BB.daily, aes(jday, TS.10)) +
   theme_minimal()
 ggplotly(TS10.p)
 
-kruskal.test(TS.10 ~ Site, data = BB.daily)
-kruskal.test(TS.10 ~ Site, data = BB.dailyGS)
-kruskal.test(TS.10 ~ Site, data = BB.dailyNGS)
-
+kruskal.test(TS.10_mean ~ Site, data = BB.daily)
+kruskal.test(TS.10_mean ~ Site, data = BB.dailyGS)
+kruskal.test(TS.10_mean ~ Site, data = BB.dailyNGS)
 ```
 
 ### Air temperature
 ```{r}
 
-(Ta.p <- ggplot(BB.daily, aes(jday, Ta)) + 
+(Ta_mean.p <- ggplot(BB.daily, aes(jday, Ta_mean)) + 
   geom_line(aes (color = Site)) +
    ylab("Air temperature (deg C)")+
   xlab("Julian DOY") +
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_color_aaas()+
   theme_bw())
-ggplotly(Ta.p)
+ggplotly(Ta_mean.p)
 
-kruskal.test(Ta ~ Site, data = BB.daily)
+kruskal.test(Ta_mean ~ Site, data = BB.daily)
 
-AirT.sum <- BB.daily %>% 
-  select(Ta, jday, month) %>%
-  summarise()
+#AirT.sum <- BB.daily %>% 
+ # select(Ta, jday, month) %>%
+  #summarise()
 ```
 
 ### Relative humidity
 
 ```{r}
-ggplotly(RH.p <- ggplot(BB.daily, aes(jday, RH)) + 
+ggplotly(RH.p <- ggplot(BB.daily, aes(jday, RH_mean)) + 
   geom_line(aes(colour = Site)) +
     ylab("RH (%)") +
     xlab("Julian DOY") +
@@ -558,7 +579,7 @@ ggplotly(RH.p <- ggplot(BB.daily, aes(jday, RH)) +
    scale_color_aaas()+
   theme_bw())
 
-kruskal.test(RH~Site, data=BB.daily)
+kruskal.test(RH_mean~Site, data=BB.daily)
 ```
 
 
@@ -680,9 +701,15 @@ SWC.p <- ggplot(BB.daily, aes(jday, SWC)) +
   theme_bw()
 ggplotly(SWC.p)
 ```
+
+```{r}
+write.csv(BB.daily, "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/Full.csv")
+```
 ### EC average data
 NEED TO CALCULATE THE DEVIATION FROM THE MEAN OR FROM EC DATA - (BB-EC) 
 EC data is 10 year average
+
+
 ```{r import EC data for BB}
 EC <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/met_ancillary/ECCC/ECCC_met_merged.csv')
 #EC$month <- months(EC_precip$Month, abbreviate = TRUE)
@@ -762,6 +789,7 @@ D1 <- full_join(Daily, Daily.nGF)
 Fulldata <- full_join(BB.daily, D1)
 summary(Fulldata)
 
+
 # Identify outliers:
 outliers<- ggplot(Fulldata, aes(jday, ch4gC))+geom_point()
 ggplotly(outliers)
@@ -803,22 +831,22 @@ Effects of CH4 flux:
 BB1.model <- Fulldata %>%
   filter(Site == "BB1")
 
-BB1.CH4.lm1 <- lm(logCH4_mgC~TS.5+WTH, data = BB1.model)
+BB1.CH4.lm1 <- lm(logCH4_mgC~TS.5_mean+WTH, data = BB1.model)
 summary(BB1.CH4.lm1)
 
-BB1.CH4.Ts <- lm(logCH4_mgC ~ TS.5, data = BB1.model)
+BB1.CH4.Ts <- lm(logCH4_mgC ~ TS.5_mean, data = BB1.model)
 summary(BB1.CH4.Ts)
 
 BB1.CH4.WTH <- lm(logCH4_mgC ~ WTH, data = BB1.model)
 summary(BB1.CH4.WTH)
 
 (WTTS.BB1 <- ggplot(Fulldata, aes(WTH, logCH4_mgC, color = Site)) + 
-  geom_point(aes(size = TS.5))+
+  geom_point(aes(size = TS.5_mean))+
     theme_bw())
 
 (WTTS.BB <- Fulldata %>% filter(WTH > -20) %>%
   ggplot(., aes(WTH, logCH4_mgC, color = Site))+
-    geom_point(aes (size = TS.5)))
+    geom_point(aes (size = TS.5_mean)))
 ```
 
 This website (below) is used for modelling tutorial 
@@ -856,10 +884,10 @@ data.frame(
 BB2.model <- Fulldata %>%
   filter(Site == "BB2")
 
-BB2.CH4.lm1 <- lm(logCH4_mgC~TS.5+WTH, data = BB2.model)
+BB2.CH4.lm1 <- lm(logCH4_mgC~TS.5_mean+WTH, data = BB2.model)
 summary(BB2.CH4.lm1)
 
-BB2.CH4.TS5 <- lm(logCH4_mgC~TS.5, data = BB2.model)
+BB2.CH4.TS5 <- lm(logCH4_mgC~TS.5_mean, data = BB2.model)
 summary(BB2.CH4.TS5)
 
 BB2.CH4.WTH<- lm(logCH4_mgC~(WTH^2), data = BB2.model)
@@ -899,29 +927,29 @@ CH4 response to 5cm soil temperature
 ```{r, Temp response and Q10}
 
 
-CH4.Ts <- lm(logCH4_mgC ~ Site * TS.5, Fulldata)
+CH4.Ts <- lm(logCH4_mgC ~ Site * TS.5_mean, Fulldata)
 summary(CH4.Ts)
 
 # https://stats.stackexchange.com/questions/64927/how-do-i-plot-an-exponential-curve-in-r (below is following this)
 
-mdl1 <- lm(logCH4_mgC ~ TS.5, data = BB1.model)
-mdl2 <- lm(logCH4_mgC ~  I(TS.5^3), data = BB1.model)
+mdl1 <- lm(logCH4_mgC ~ TS.5_mean, data = BB1.model)
+mdl2 <- lm(logCH4_mgC ~  I(TS.5_mean^3), data = BB1.model)
 
 
 summary(mdl1)
 summary(mdl2) #higher R2
 
-prd <- data.frame(TS.5 = seq(0, 20, by = 0.5))
+prd <- data.frame(TS.5_mean = seq(0, 20, by = 0.5))
 
 result <- prd
 #result$mdl1 <- predict(mdl1, newdata = prd)
 result$mdl2 <- predict(mdl2, newdata = prd)
 
-result <-  melt(result, id.vars = "TS.5", variable.name = "model",
+result <-  melt(result, id.vars = "TS.5_mean", variable.name = "model",
                 value.name = "fitted")
-ggplot(result, aes(x = TS.5, y = fitted)) +
+ggplot(result, aes(x = TS.5_mean, y = fitted)) +
   theme_bw() +
-  geom_point(data = BB1.model, aes(x = TS.5, y = logCH4_mgC)) +
+  geom_point(data = BB1.model, aes(x = TS.5_mean, y = logCH4_mgC)) +
   geom_line(aes(colour = model), size = 1)
 
 # https://agupubs.onlinelibrary.wiley.com/doi/10.1002/2017GB005644 - temp response estimation
@@ -929,20 +957,20 @@ ggplot(result, aes(x = TS.5, y = fitted)) +
 Q10.BB1 <- exp(10*0.012168)
 Q10.BB1 <- exp(10*0.0002439)
 
-mdl3 <- lm(logCH4_mgC ~ TS.5, data = BB2.model)
-mdl4 <- lm(logCH4_mgC ~ I(TS.5^3), data = BB2.model)
+mdl3 <- lm(logCH4_mgC ~ TS.5_mean, data = BB2.model)
+mdl4 <- lm(logCH4_mgC ~ I(TS.5_mean^3), data = BB2.model)
 
-prd2 <- data.frame(TS.5 = seq(0, 20, by = 0.5))
+prd2 <- data.frame(TS.5_mean = seq(0, 20, by = 0.5))
 
 result2 <- prd2
 #result2$mdl3 <- predict(mdl3, newdata = prd)
 result2$mdl4 <- predict(mdl4, newdata = prd2)
 
-result2 <-  melt(result2, id.vars = "TS.5", variable.name = "model",
+result2 <-  melt(result2, id.vars = "TS.5_mean", variable.name = "model",
                 value.name = "fitted")
-ggplot(result2, aes(x = TS.5, y = fitted)) +
+ggplot(result2, aes(x = TS.5_mean, y = fitted)) +
   theme_bw() +
-  geom_point(data = BB2.model, aes(x = TS.5, y = logCH4_mgC)) +
+  geom_point(data = BB2.model, aes(x = TS.5_mean, y = logCH4_mgC)) +
   geom_line(aes(colour = model), size = 1)
 
 summary(mdl4) # higher R2
@@ -954,13 +982,13 @@ Q10.BB2 <- exp(10*0.0001653)
 results <- full_join(result,result2)
 
 P1 <- Fulldata %>%
-  filter(TS.5 > '0' & logCH4_mgC > '1') %>%
-  ggplot(., aes(TS.5, logCH4_mgC, color= Site)) +
+  filter(TS.5_mean > '0' & logCH4_mgC > '1') %>%
+  ggplot(., aes(TS.5_mean, logCH4_mgC, color= Site)) +
   geom_point() +
       scale_colour_manual(values = c("#0072B2", "#D55E00"))+
-  #geom_line(data = results, aes(TS.5, fitted, color=model))+
-  geom_line(color='#0072B2',data = result, aes(TS.5, y=fitted))+
-  geom_line(color='#D55E00',data = result2, aes(TS.5, y=fitted))+  ##geom_smooth(method=)
+  #geom_line(data = results, aes(TS.5_mean, fitted, color=model))+
+  geom_line(color='#0072B2',data = result, aes(TS.5_mean, y=fitted))+
+  geom_line(color='#D55E00',data = result2, aes(TS.5_mean, y=fitted))+  ##geom_smooth(method=)
   ylab(bquote('ln' ~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   theme_bw()
 P1
@@ -971,20 +999,20 @@ BB1 modeling CH4 response to temperature and WTH
 ```{r}
 library(AER)
 # fit a simple linear model
-linear_model<- lm(logCH4_mgC ~ TS.5*Site, data = Fulldata)
+linear_model<- lm(logCH4_mgC ~ TS.5_mean*Site, data = Fulldata)
 summary(linear_model)
 # fit the quadratic Model
-quadratic_model <- lm(logCH4_mgC~ TS.5 + I(TS.5^2) + WTH, data = BB1.model)
+quadratic_model <- lm(logCH4_mgC~ TS.5_mean + I(TS.5_mean^2) + WTH, data = BB1.model)
 summary(quadratic_model)
 
 # obtain the model summary
 coeftest(quadratic_model, vcov. = vcovHC, type = "HC1")
 
 # draw a scatterplot of the observations for income and test score
-plot(BB1.model$TS.5, BB1.model$logCH4_mgC,
+plot(BB1.model$TS.5_mean, BB1.model$logCH4_mgC,
      col  = "steelblue",
      pch = 20,
-     xlab = "TS.5",
+     xlab = "TS.5_mean",
      ylab = "logCH4_mgC",
      main = "Estimated Linear and Quadratic Regression Functions")
 
@@ -992,49 +1020,49 @@ plot(BB1.model$TS.5, BB1.model$logCH4_mgC,
 abline(linear_model, col = "black", lwd = 2)
 
 # add quatratic function to the plot
-order_id <- order(BB1.model$TS.5)
+order_id <- order(BB1.model$TS.5_mean)
 
-lines(x = BB1.model$TS.5[order_id], 
+lines(x = BB1.model$TS.5_mean[order_id], 
       y = fitted(quadratic_model)[order_id],
       col = "red", 
       lwd = 2) 
 
 
-BB1.model$CH4.pred <- 4.88 - .24*(BB1.model$TS.5) + 0.013*(I(BB1.model$TS.5^2)) - 0.036*(BB1.model$WTH)
+BB1.model$CH4.pred <- 4.88 - .24*(BB1.model$TS.5_mean) + 0.013*(I(BB1.model$TS.5_mean^2)) - 0.036*(BB1.model$WTH)
 plot(BB1.model$CH4.pred, BB1.model$logCH4_mgC)
 lm.1 <- lm(CH4.pred~logCH4_mgC, data = BB1.model)
 summary(lm.1)
 
 #USE THIS 30/11/2020#
-ggplot(BB1.model, aes(TS.5, logCH4_mgC))+geom_point() +
+ggplot(BB1.model, aes(TS.5_mean, logCH4_mgC))+geom_point() +
   geom_smooth(method = "gam", formula = y ~ x + I(x^2))
 
-ggplot(BB1.model, aes(TS.5, logCH4_mgC))+geom_point() +
+ggplot(BB1.model, aes(TS.5_mean, logCH4_mgC))+geom_point() +
      geom_line(aes(y = CH4.pred), size = 1)
 
 BB2.model %>% filter(Period == 'GS') %>%
-  lm(logCH4_mgC ~ TS.5)
+  lm(logCH4_mgC ~ TS.5_mean)
 ```
 ```{r}
 # fit a simple linear model
 linear_model<- lm(logCH4_mgC ~ WTH+ I(WTH^3), data = BB2.model)
 summary(linear_model)
 
-plot(BB1.model$TS.5, BB1.model$logCH4_mgC)
+plot(BB1.model$TS.5_mean, BB1.model$logCH4_mgC)
 abline(linear_model)
 
 # fit the quadratic Model
-quadratic_model <- lm(logCH4_mgC~ I(TS.5^3) + WTH + I(WTH^3) , data = BB2.model)
+quadratic_model <- lm(logCH4_mgC~ I(TS.5_mean^3) + WTH + I(WTH^3) , data = BB2.model)
 summary(quadratic_model)
 
 # obtain the model summary
 coeftest(quadratic_model, vcov. = vcovHC, type = "HC1")
 
 # draw a scatterplot of the observations for income and test score
-plot(BB1.model$TS.5, BB1.model$logCH4_mgC,
+plot(BB1.model$TS.5_mean, BB1.model$logCH4_mgC,
      col  = "steelblue",
      pch = 20,
-     xlab = "TS.5",
+     xlab = "TS.5_mean",
      ylab = "logCH4_mgC",
      main = "Estimated Linear and Quadratic Regression Functions")
 
@@ -1042,9 +1070,9 @@ plot(BB1.model$TS.5, BB1.model$logCH4_mgC,
 abline(linear_model, col = "black", lwd = 2)
 
 # add quatratic function to the plot
-order_id <- order(BB1.model$TS.5)
+order_id <- order(BB1.model$TS.5_mean)
 
-lines(x = BB1.model$TS.5[order_id], 
+lines(x = BB1.model$TS.5_mean[order_id], 
       y = fitted(quadratic_model)[order_id],
       col = "red", 
       lwd = 2) 
@@ -1068,8 +1096,8 @@ summary(CH4.WTH)
 
 ```{r}
 ER.TS5.P <- Fulldata %>%
-  #filter(TS.5 > '0') %>%
-  ggplot(., aes(TS.5, RecogC, color= Site)) +
+  #filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, RecogC, color= Site)) +
   geom_point()+
   theme_bw()
 ER.TS5.P
@@ -1159,29 +1187,29 @@ kruskal.test(GPP_f ~ Site, data = Fulldata)
 
 ```{r}
 P1.1 <- FulldataGS %>%
-  filter(TS.5 > '0') %>%
-  ggplot(., aes(TS.5, ch4mgC, color= Site)) +
+  filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, ch4mgC, color= Site)) +
   geom_point() +
   theme_bw()
 P1.1
 
 P1.2 <- FulldataNGS %>%
-  filter(TS.5 > '0') %>%
-  ggplot(., aes(TS.5, ch4mgC, color= Site)) +
+  filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, ch4mgC, color= Site)) +
   geom_point() +
   theme_bw()
 P1.2
 
 P1.3 <- BB1.model %>%
-  filter(TS.5 > '0') %>%
-  ggplot(., aes(TS.5, ch4mgC, color= Period)) +
+  filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, ch4mgC, color= Period)) +
   geom_point() +
   theme_bw()
 P1.3
 
 P1.4 <- BB2.model %>%
-  filter(TS.5 > '0') %>%
-  ggplot(., aes(TS.5, ch4mgC, color= Period)) +
+  filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, ch4mgC, color= Period)) +
   geom_point() +
   theme_bw()
 P1.4

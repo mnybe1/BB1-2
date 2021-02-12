@@ -31,9 +31,9 @@ rm(list=ls())
 ```{r set working directory and load data}
 setwd("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data")
 
-Full <- read.csv("Full.csv") #All data (GS and NGS), below 2 new data frames separated into GS and NGS
-FullGS <- Full[(Full$jday >= 92 & Full$jday <= 274), ] 
-FullNGS <-Full[(Full$jday < 92 | Full$jday >=275), ] 
+Env <- read.csv("Full.csv") #All data (GS and NGS), below 2 new data frames separated into GS and NGS
+EnvGS <- Env[(Env$jday >= 92 & Env$jday <= 274), ] 
+EnvNGS <-Env[(Env$jday < 92 | Env$jday >=275), ] 
 ```
 
 ## {.tabset .tabset-fade}
@@ -41,17 +41,22 @@ FullNGS <-Full[(Full$jday < 92 | Full$jday >=275), ]
 ### To do
 
 - Fix up precipitation data
-- NDVI - make sure gaps are filled
-- Using 10 year average Environment Canada data, calculate deviattion from the mean for both sites
+- NDVI - make sure gaps are filled. When using this with GPP to support each other, could think about above vs. below ground productivity.
+- SWin
+- PAR
+- Using 10 year average Environment Canada data, calculate deviation from the mean for both sites - this will assess whether the climate this year had a particular influence on fluxes, compared to previous years
 - Environment/flux relationships
 - Calculate radiative forcing
+- Compare my values to Nick and Brenda's to assess inter-annual variability
+- Add in statistical analysis
+- For seasonal drivers, look more at end or see if ER or GPP at one site and specific season is driving it more or less. 
 
 ### Environmental variables
 
 __Air temperature__
 
 ```{r Air temperature}
-(Ta.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
+(Ta.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Air temperature (deg C)")+
@@ -66,7 +71,7 @@ __Air temperature__
 __Relative humidity__
 
 ```{r Relative humidity}
-(RH.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
+(RH.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = RH_min -1 , ymax = RH_max +1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Relative humidity (%)")+
@@ -81,7 +86,7 @@ __Relative humidity__
 __Water table height__
 
 ```{r Water table height}
-(WTH.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
+(WTH.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = WTH._min -1 , ymax = WTH._max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Water table height (cm)")+
@@ -96,7 +101,7 @@ __Water table height__
 __5cm soil temperature__
 
 ```{r T5cm Soil temperature}
-(TS.5.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
+(TS.5.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("5cm soil temperature (deg C)")+
@@ -111,7 +116,7 @@ __5cm soil temperature__
 __10cm soil temperature__
 
 ```{r T10cm Soil temperature}
-(TS.10.p <- ggplot(Full, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
+(TS.10.p <- ggplot(Env, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("10cm soil temperature (deg C)")+
@@ -135,7 +140,7 @@ EC_precip <- EC_precip %>%
    filter(Year >= "2020") %>%
    select(month, jday, Site, Precip)
 
-Precip <- Full %>% 
+Precip <- Env %>% 
    select(Precip_mean, Site, jday, month) %>%
    group_by(Site, month) %>%
    mutate(Precip = Precip_mean*100) %>%
@@ -152,11 +157,12 @@ ggplotly(P.p)
 ```
 
 
-### CO2 and CH4 fluxes
+### CO2 and CH4 budgets
 
 
 ```{r read in daily mean CO2 and CH4 fluxes}
-Flux.daily <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/scripts/flux.csv")
+# This file has daily averaged gap filled and non gap filled data
+Flux.daily <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/flux.csv") 
 FluxGS <- Flux.daily[(Flux.daily$jday >= 92 & Flux.daily$jday <= 274), ] 
 FluxNGS <-Flux.daily[(Flux.daily$jday < 92 | Flux.daily$jday >=275), ] 
 ```
@@ -329,4 +335,18 @@ CO2eq %>%
 ```
 
 ### Environmental effects on CO2 and CH4 fluxes
+
+```{r join flux and environmental data}
+#Joining daily average flux (gap filled and non gap filled) and environmental data
+
+nonGF <-Flux.Env1 <- read.csv("/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/BB_fulldata.csv") %>%
+  select(c("jday","Site", 39:48))
+
+Flux.Env <- right_join(Flux.daily, Env,  by = c("jday", "Site")) %>%
+   select(-c("TS.30_mean", "TS.30_min", "TS.30_max", "X.x", "X.y", "month_local")) %>% #remove unnecessary variables
+   right_join(nonGF, by = "jday", "Site")
+
+write.csv(Flux.Env, "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/
+FluxEnv.csv")
+```
 
