@@ -1124,6 +1124,7 @@ ggboxplot(Fulldata, x = "Site", y = "ch4mgC",
 
 kruskal.test(ch4mgC ~ Site, data = Fulldata)
 ```
+
 ```{r, Kruskal-Wallis : CH4}
 summarystats <- group_by(Fulldata, Site) %>%
   summarise(
