@@ -1,7 +1,7 @@
 ---
 title: "Processing_2021"
 author: "Marion Nyberg"
-date: "01/03/2021"
+date: "05/03/2021"
 output: html_document
 ---
 
@@ -680,7 +680,7 @@ BB2 <- Flux.Env %>%
 
 __BB1__ 
 
-For BB1, 2 models to predict Reco were very similar (model 4(with WTH) and model 7). Thinking of going with model 7, which doesn't include WTH. Within sites, how important is WTH in explaining Reco? Need to check model assumptions. Including water table height does not sig improve (0.09) model. 
+For BB1, 2 models to predict Reco were very similar (model 4(with WTH) and model 7). Thinking of going with model 7, which doesn't include WTH. Within sites, how important is WTH in explaining Reco? Need to check model assumptions. Including water table height does not sig improve (0.09) model. Therefore Reco at BB1 is predominately driven by temperature, and not WTH.
 
 ```{r BB1 model reln between Reco and Temp and WTH}
 # Polynomial regression: Check for non-linear relationships #http://www.sthda.com/english/articles/40-regression-analysis/162-nonlinear-regression-essentials-in-r-polynomial-and-spline-regression-models/
@@ -751,7 +751,7 @@ predictions <- model.7 %>% predict(test.data)
 
 __BB2__ 
 
-Again, removing WTH from the model does slightly improve the model, suggesting that at both sites Reco is more strongly driven by soil temperature than WTH. At BB2, including WTH in the model sig. (P<0.05) improves it. BB2 gets significantly drier than BB1, which is why there is such a strong control of WTH on Reco.
+At BB2, including WTH in the model sig. (P<0.05) improves it. BB2 gets significantly drier than BB1, which is why there is such a strong control of WTH on Reco? 
 
 ```{r BB2 model reln between Reco and Temp and WTH, figures-side, fig.show="hold", out.width="50%"}
 # Polynomial regression: Check for non-linear relationships http://www.sthda.com/english/articles/40-regression-analysis/162-nonlinear-regression-essentials-in-r-polynomial-and-spline-regression-models/
