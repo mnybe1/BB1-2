@@ -932,13 +932,14 @@ anova(model.2, model.3)
 ```
 
 
+- "When the water table is high, CH4 emissions are not regulated by WTD, particularly in vascular plant dominated wetlands... transport of CH4 from sediment to atmosphere via aerenchyma is inhibited by the inundation of AGB of plants" (REF) - from Zhu et al., 2020
 
 ```{r compare BB1 and BB2 CH4, figures-side, fig.show="hold", out.width="50%"}
 ggplot(BB1, aes(WTH._mean, CH4mgC_RF_log)) +
   geom_point(aes(color = TS.5_mean)) +
   scale_color_gradient(low = "light blue", high = "dark blue")+
   stat_smooth(method = lm, formula = y ~ x+c)+
-  xlab("5cm soil temperature (deg C)")+
+  xlab("WTH (cm)")+
 ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   ggtitle("BB1")+
   theme_bw()
@@ -948,7 +949,7 @@ ggplot(BB2, aes(WTH._mean, CH4mgC_RF_log) ) +
   geom_point(aes(color = TS.5_mean)) +
   scale_color_gradient(low = "light blue", high = "dark blue")+
   #stat_smooth(method = 'lm', formula = y ~ x)+
-  xlab("5cm soil temperature (deg C)")+
+  xlab("WTH (cm)")+
 ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   ggtitle("BB2")+
   theme_bw()
