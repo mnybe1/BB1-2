@@ -1,7 +1,7 @@
 ---
 title: "Processing_2021"
 author: "Marion Nyberg"
-date: "08/02/2021"
+date: "01/03/2021"
 output: html_document
 ---
 
@@ -33,7 +33,6 @@ rm(list=ls())
 ```{r set working directory and load data}
 wd <- '~/Google Drive/Micromet Lab/People/2019-Marion Nyberg/BB1-2'
 setwd(wd)
-getwd()
 
 Env.input_file <- "data/Full.csv" #All data (GS and NGS), below 2 new data frames separated into GS and NGS
 Env.input_data <- read.csv(Env.input_file) 
@@ -46,24 +45,35 @@ ind.NGS <- (Env.input_data$jday < 92 | Env.input_data$jday >=275)
 
 ### To do
 
-- Fix up precipitation data
-- NDVI - make sure gaps are filled. Add this to Env.input_data file. When using this with GPP to support each other, could think about above vs. below ground productivity.
-- PAR
-- Using 10 year average Environment Canada data, calculate deviation from the mean for both sites - this will assess whether the climate this year had a particular influence on fluxes, compared to previous years
+- NDVI (26/2)
+  - make sure gaps are filled better than they are now
+  - When using this with GPP to support each other, could think about above vs. below ground productivity.
+
+- PAR...? I'm not using...
+
 - Environment/flux relationships
-- Calculate radiative forcing
-- Compare my values to Nick and Brenda's to assess inter-annual variability
+
+- Calculate radiative forcing - have gotten some values from K. Nugents code, although still trying to figure out how to make it predict over time... I think what I have now is the radiative forcing currently... I have a value of ~ -3 for total RF (CO2 and CH4)
+
+- Compare my values to Nick and Brenda's to assess inter-annual variability.. (maybe)
+
 - Add in statistical analysis
+
 - For seasonal drivers, look more at end or see if ER or GPP at one site and specific season is driving it more or less.
-- Write a function to create timeseries plots and tables
-- calcualte Q10s 
+
+- calculate Q10s 
+
+- __HYSTERESIS__ - if focusing more on WTH as diff between the sites. - effect on Reco and CH4..
+
+- surface plots of CH4 response to temp / wth / gpp? 
+
 
 ### Environmental variables
 
 __Air temperature__
 
-```{r Air temperature}
-(Ta.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
+```{r Air temperature, fig.width=10, fig.height=4}
+Ta.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Air temperature (deg C)")+
@@ -71,14 +81,16 @@ __Air temperature__
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw())
-#ggplotly(Ta.p)
+  theme_bw()
+ggplotly(Ta.p)
+
+kruskal.test(Ta_mean~Site, data = Env.input_data)
 ```
 
 __Relative humidity__
 
-```{r Relative humidity}
-(RH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
+```{r Relative humidity, fig.width=10, fig.height=4}
+RH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RH_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = RH_min -1 , ymax = RH_max +1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Relative humidity (%)")+
@@ -86,14 +98,16 @@ __Relative humidity__
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw())
-#ggplotly(RH.p)
+  theme_bw()
+ggplotly(RH.p)
+
+kruskal.test(RH_mean~Site, data = Env.input_data)
 ```
 
 __Water table height__
 
-```{r Water table height}
-(WTH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
+```{r Water table height, fig.width=10, fig.height=4}
+WTH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = WTH._min -1 , ymax = WTH._max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("Water table height (cm)")+
@@ -101,14 +115,16 @@ __Water table height__
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw())
-#ggplotly(WTH.p)
+  theme_bw()
+ggplotly(WTH.p)
+
+kruskal.test(WTH._mean~Site, data = Env.input_data)
 ```
 
 __5cm soil temperature__
 
-```{r T5cm Soil temperature}
-(TS.5.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
+```{r T5cm Soil temperature, fig.width=10, fig.height=4}
+TS.5.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("5cm soil temperature (deg C)")+
@@ -116,14 +132,16 @@ __5cm soil temperature__
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw())
-#ggplotly(TS.5.p)
+  theme_bw()
+ggplotly(TS.5.p)
+
+kruskal.test(TS.5_mean~Site, data = Env.input_data)
 ```
 
 __10cm soil temperature__
 
-```{r T10cm Soil temperature}
-(TS.10.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
+```{r T10cm Soil temperature, fig.width=10, fig.height=4}
+TS.10.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
    ylab("10cm soil temperature (deg C)")+
@@ -131,39 +149,108 @@ __10cm soil temperature__
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw())
-#ggplotly(TS.10.p)
+  theme_bw()
+ggplotly(TS.10.p)
+
+kruskal.test(TS.10_mean~Site, data = Env.input_data)
 ```
 
-<!-- NEED TO FIX PRECIP -->
-```{r Precipitation with EC, include=FALSE}
+__Precipitation__
+
+Notes:
+- No Env Can precip data at nearby weather station for start of 2020
+
+- 10 year average data presented below
+
+```{r Precipitation}
+library(reshape2)
 #Load Environment Canada precipitation data and re-format:
-EC_precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/EC_precip/EC_precip.csv') 
+EC_precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/EC_precip2021.csv') 
 EC_precip$Timestamp <- as.POSIXlt(EC_precip$Timestamp, format = "%Y-%m-%d")
-EC_precip$jday <- yday(EC_precip$Timestamp)
-EC_precip$Site <- 'EC'
 EC_precip$month <- months(EC_precip$Timestamp, abbreviate = TRUE)
 EC_precip <- EC_precip %>%
-   filter(Year >= "2020") %>%
-   select(month, jday, Site, Precip)
+   select(c(month, jday, Site, Precip_mean)) %>%
+  group_by(month) %>%
+  mutate(Cumsum = cumsum(Precip_mean))
 
-Precip <- Env.input_data %>% 
-   select(Precip_mean, Site, jday, month) %>%
-   group_by(Site, month) %>%
-   mutate(Precip = Precip_mean*100) %>%
-   full_join(., EC_precip) %>%
-   mutate(Precip.cumsum = cumsum(Precip))
 
-P.p <- ggplot(Precip, aes(month, Precip.cumsum, fill = Site)) + 
-  geom_bar(stat = "identity", position = 'dodge') +
+#cs <- cumsum(x)
+#cs[miss] <- NA
+#Precip data frame has the daily total
+Precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/cr1000/BBPCT.csv') 
+miss <- is.na(Precip)
+Precip[miss] <- 0
+Precip$Time..PST. <- as.POSIXlt(Precip$Time..PST., format = "%Y-%m-%d")
+Precip$month <- months(Precip$Time..PST., abbreviate = TRUE)
+Precip$year <- year(Precip$Time..PST.)
+Precip$jday <-yday(Precip$Time..PST.)
+Precip <- Precip %>% filter(year == '2020')
+Precip.cumsum <- Precip %>% group_by(month) %>%
+  mutate(BB1 = cumsum(Precipitation..1.00m.),
+         BB2 = cumsum(BB2.Precipitation..1.00m.))
+Precip.cumsum <- Precip.cumsum %>% select(month, jday, BB1, BB2) %>%
+  melt(id.vars = c("month", "jday"),
+       variable.name = "Site",
+       value.name = "Cumsum.Precip")
+
+names(Precip)[2] <- "BB1"
+names(Precip)[3] <-"BB2"
+
+#Precip.2 df has the daily average rainfall, therefore it needs to be multiplied by 48(measurements taken every 30 mins)
+Precip.2 <- Precip %>% select(c(month, jday, BB1, BB2))%>%
+  melt(id.vars = c("month", "jday"),
+       variable.name = "Site",
+       value.name = "Precip")
+
+Precip.2 <- Precip.2 %>% 
+  ddply(c("Site", "month", "jday"), summarize,
+        Precip_mean = (mean(Precip)*48)) %>%
+  group_by(Site, month) %>%
+  mutate(Cumsum = cumsum(Precip_mean))
+
+
+
+#Precip <- Env.input_data %>% 
+ #  select(Precip_mean, Site, jday, month) %>%
+  # group_by(Site, month) %>%
+   #mutate(Precip_mean = Precip_mean*10) %>%
+   #full_join(., EC_precip) %>%
+  #group_by(Site, month) %>%
+  # mutate(Precip.cumsum = cumsum(Precip_mean))
+
+#Precip <- Env.input_data %>% 
+ #  select(Precip_mean, Site, jday, month) %>%
+  # group_by(Site, month) %>%
+  #summarise(Precip = (cumsum(Precip_mean) * 10))
+
+#P.p <- ggplot(Precip.cumsum, aes(month, Cumsum.Precip, fill = Site)) + 
+ # geom_col(position = 'dodge') +
+  # scale_x_discrete(limits = month.abb) +
+  #ylab("Precipitaion (mm)")+
+   #scale_fill_aaas()+
+  #theme_bw()
+#ggplotly(P.p)
+
+Precip.3 <- Precip.2 %>%
+  full_join(., EC_precip) %>%
+  group_by(Site, month)
+
+P.p2 <- ggplot(Precip.3, aes(month, Cumsum, fill = Site)) + 
+  geom_col(position = 'dodge') +
    scale_x_discrete(limits = month.abb) +
-      ylab("Total monthly precipitation (mm)")+
+  ylab("Precipitaion (mm)")+
    scale_fill_aaas()+
   theme_bw()
-ggplotly(P.p)
+ggplotly(P.p2)
+
 ```
 
-```{r}
+
+__SW in__
+
+Using data from BB2 only
+
+```{r Incoming SW radiation, fig.width=10, fig.height=4}
 (Env.input_data %>% filter(Site == "BB2") %>%
    ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), SWin_mean)) + 
   geom_line()) +
@@ -173,9 +260,15 @@ ggplotly(P.p)
    scale_color_aaas()+
   theme_bw()
 ```
+
+
+
 __NDVI__
 
-```{r load NDVI data and gap fill}
+Notes: 
+- This needs lots of work to gap fill more accurately? 
+
+```{r load NDVI data and gap fill, results=FALSE}
 NDVI1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB_ndvi/bb1_ndvi.csv')
 NDVI1$Site <- 'BB1'
 ind <- which(NDVI1$system.time_start == '13-Jul-20')
@@ -187,10 +280,19 @@ NDVI$DATE <- dmy(NDVI$system.time_start)
 ndvi.lm <- NDVI %>% pivot_wider(names_from = Site, values_from = NDVI)
 ndvi.lm <- lm(BB1~BB2, ndvi.lm)
 summary(ndvi.lm)
-coef.ndvi <- 0.9
-intercept.ndvi <- -0.22469
+coef.ndvi <- 0.94298
+intercept.ndvi <- -0.06652
 
 NDVI <- NDVI %>% filter(DATE >= "2020-01-01")
+NDVI$jday <- yday(NDVI$DATE)
+
+jday <- c(1:366)
+JDAY <- data.frame(jday)
+NDVI.new<-merge(JDAY, NDVI,  by = 'jday', all.x = TRUE)
+NDVI.new <- NDVI.new %>%
+  select(c(jday, Site, NDVI))
+
+Env.input_data <- left_join(Env.input_data, NDVI.new)
 
 (NDVI.p <- ggplot(NDVI, aes(DATE, NDVI)) + 
   geom_line(aes (color = Site)) +
@@ -201,12 +303,67 @@ NDVI <- NDVI %>% filter(DATE >= "2020-01-01")
 ```
 
 
-```{r statistical analysis for env variables}
-kruskal.test(Ta_mean~Site, data = Env.input_data)
-kruskal.test(RH_mean~Site, data = Env.input_data)
-kruskal.test(TS.5_mean~Site, data = Env.input_data)
-kruskal.test(TS.10_mean~Site, data = Env.input_data)
-kruskal.test(WTH._mean~Site, data = Env.input_data)
+__Compare to nearby weather station (Burns Bog) 10 year average data (from Env. Canada)__
+
+ - Wetter than the 10 year average in 2020
+ 
+ - need to create table that shows how much BB average monthly temperature and rainfall deviate from EC 10 year average
+
+```{r compre env Can 10 year average to 2020 BB, fig.width=10, fig.height=4}
+EC.avg <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/EC_precip/EC_climate.csv') #10 years of Env.Can data from 2011-2020
+
+EC.avg$Timestamp <- as.POSIXct(EC.avg$Timestamp, format = "%Y-%m-%d")
+EC.avg$jday <- yday(EC.avg$Timestamp)
+
+EC.temp.avg <- EC.avg %>% dplyr::select(jday, Month, Temp) %>%
+  ddply(c("jday", "Month"), summarise,
+        Ta_mean = mean(Temp, na.rm = TRUE)) 
+EC.temp.avg$Site <- "EC"
+names(EC.temp.avg)[2] <- "month"
+EC.temp.avg$month <-month.abb[EC.temp.avg$month]
+
+Temp.avg <- Env.input_data %>% select(Site, jday, Ta_mean, month) %>%
+  full_join(EC.temp.avg)
+
+Ta.p <- ggplot(Temp.avg, aes(jday, Ta_mean)) + 
+ geom_line(aes(colour = Site)) +
+  ylab("Air temperature (deg C)")+
+  xlab("Julian DOY") +
+  ggtitle("Air temperature for BB1, BB1 and the 10 year average from EC") +
+   scale_color_aaas()+
+  theme_bw()
+ggplotly(Ta.p)
+
+#TA.avg.p <- Temp.avg %>% ddply (c("month", "Site"), summarise,
+ #                               MeanTemp = mean(Ta_mean)) %>%
+#ggplot(., aes(month, MeanTemp, fill = Site))+
+ # geom_col(position = 'dodge')+  
+  #scale_x_discrete(limits = month.abb) +
+   # scale_fill_aaas()+
+  #theme_bw()
+#ggplotly(TA.avg.p)
+
+EC.Precip.avg <- EC.avg %>% dplyr::select(jday, Month, Precip) %>%
+  ddply(c("jday", "Month"), summarise,
+       Precip_mean = mean(Precip, na.rm = TRUE)) %>%
+  group_by(Month) %>%
+  mutate(Precip_cumsum = cumsum(Precip_mean))
+
+names(EC.Precip.avg)[2] <- "month"
+names(EC.Precip.avg)[4] <- "Cumsum"
+EC.Precip.avg$Site <- "EC"
+EC.Precip.avg$month <-month.abb[EC.Precip.avg$month]
+
+Precip.avg <- Precip.2 %>% select(Site, jday, Cumsum, Precip_mean, month) %>%
+  full_join(EC.Precip.avg)
+
+Precip.p <- ggplot(Precip.avg, aes(month, Cumsum, fill = Site)) + 
+  geom_col(position = 'dodge') +
+   scale_x_discrete(limits = month.abb) +
+  ylab("Precipitaion (mm)")+
+   scale_fill_aaas()+
+  theme_bw()
+ggplotly(Precip.p)
 ```
 
 ### CO2 and CH4 balance
@@ -263,6 +420,7 @@ kruskal.test(NEEcum ~ Site, data = Flux.input_data)
     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
   theme_bw())
+
 ```
 
 __Cumulative GPP__
@@ -273,7 +431,7 @@ __Cumulative GPP__
   geom_line()+
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
   ylab(bquote('Cumulative GPP (g C' ~m^-2~ day^-1*')'))+
-  xlab("Julian day of year")+
+  xlab("Month")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
     scale_color_aaas()+
   theme_bw())
@@ -295,7 +453,7 @@ kruskal.test(GPPcum_f ~ Site, data = Flux.input_data)
   geom_line()+
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
   ylab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
-  xlab("Julian day of year")+
+  xlab("Julian dat of year")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
     scale_color_aaas()+
   theme_bw())
@@ -333,7 +491,7 @@ kruskal.test(Recocum ~ Site, data = Flux.input_data)
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Reco, color = Site)) +
   geom_line()+
     #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
   xlab("Month")+
  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
     scale_color_aaas()+
@@ -352,7 +510,7 @@ CH4 flux is higher at BB1 than BB2, but how does this affect the annual GHG budg
   geom_line()+
     #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
   ylab(bquote('Cumulative' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
-  xlab("Julian day of year")+
+  xlab("Month")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
     scale_color_aaas()+
   theme_bw())
@@ -477,25 +635,22 @@ Final.output_file <-"data/Final.csv"
 write.csv(Flux.Env, Final.output_file)
 ```
 
-```{r split BB1 and BB2 data}
-BB1 <- Flux.Env %>%
-  filter(Site == "BB1")
-
-BB2 <- Flux.Env %>%
-  filter(Site == "BB2")
-```
 
 
 __Ecosystem respiration and soil temperature__
 
 For any given soil temperature, respiration is higher at BB2 than BB1.
-- Need to check whether to use GF or non GF, and whether any transformations are needed
-- I think I need to include WTH as a predictor to get more accurate models. Need to show how linked WTH, TS and fluxes are
+
+- Night time gapfilled data
+
+- At BB1, WTH is not a sig important predictor for REco (P= 0.09), however, at BB2, WTH is sig, important in predicting REco (P<0.01). This is because BB2 gets significantly drier, and so dry and warm soil temperatures --> increased respiration rates.
+
 - The relationship look non-linear, so I will use polynomial regression to find which relationship is best for each site.
+
 - Is there a point in calculating Q10s if WTH is such an important driver? 
   - Should calculate Q10s.
 
-```{r Reco and Temp effect}
+```{r Reco and Temp effect , figures-side, fig.show="hold", out.width="50%"}
 #NOTES:
 #Compare GS vs. Non GS - could compare the magnitude of difference to see if there is a particular time of year when the influence is higher
 
@@ -506,14 +661,31 @@ For any given soil temperature, respiration is higher at BB2 than BB1.
    xlab('5cm Soil temperature (deg C)')+
    ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
   geom_point()+
+   ggtitle("Reco ~ Soil temp")+
+  theme_bw())
+
+(ER.TS5.P <- Flux.Env %>%
+  #filter(TS.5_mean > '0') %>%
+  ggplot(., aes(WTH._mean, RecogC, color= Site)) +
+       scale_color_aaas()+
+   xlab('WTH(cm)')+
+   ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+    ggtitle("Reco ~ WTH")+
+  geom_point()+
   theme_bw())
 ```
+```{r split BB1 and BB2 data 1st time}
+BB1 <- Flux.Env %>%
+  filter(Site == "BB1")
 
+BB2 <- Flux.Env %>%
+  filter(Site == "BB2")
+```
  
 
-
-
 __BB1__ 
+
+For BB1, 2 models to predict Reco were very similar (model 4(with WTH) and model 7). Thinking of going with model 7, which doesn't include WTH. Within sites, how important is WTH in explaining Reco? Need to check model assumptions. Including water table height does not sig improve (0.09) model. 
 
 ```{r BB1 model reln between Reco and Temp and WTH}
 # Polynomial regression: Check for non-linear relationships #http://www.sthda.com/english/articles/40-regression-analysis/162-nonlinear-regression-essentials-in-r-polynomial-and-spline-regression-models/
@@ -528,9 +700,12 @@ model.6 <- lm(log(RecogC) ~ TS.5_mean, data = BB1)
 model.7 <- lm(RecogC~ TS.5_mean + I(TS.5_mean^3), data = BB1)  # use this model 
 
 
-summary(model.7)
-summ(model.7)  # need to check if ols is meeting assumptions
+#summary(model.7)
+#summary(model.4)
+#summ(model.4)
+#summ(model.7)  # need to check if ols is meeting assumptions
 
+anova(model.7,model.4)
 
 set.seed(123)
 training.samples <- BB1$RecogC %>%
@@ -539,13 +714,13 @@ train.data  <- BB1[training.samples, ]
 test.data <- BB1[-training.samples, ]
 
 # Make predictions
-predictions <- model.4 %>% predict(test.data)
+predictions <- model.7 %>% predict(test.data)
 
 # Model performance
-data.frame(
-  RMSE = RMSE(predictions, test.data$RecogC),
-  R2 = R2(predictions, test.data$RecogC)
-)
+#data.frame(
+ # RMSE = RMSE(predictions, test.data$RecogC),
+  #R2 = R2(predictions, test.data$RecogC)
+#)
 
 # save predictions of the model in the new data frame 
 # together with variable you want to plot against
@@ -558,28 +733,50 @@ data.frame(
 
 
 #plotting model 7
-ggplot(train.data, aes(TS.5_mean, RecogC) ) +
-  geom_point(aes(color = WTH._mean)) +
-    scale_color_gradient(low = "light blue", high = "dark blue")+
-  stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  theme_bw()
+#ggplot(train.data, aes(TS.5_mean, RecogC) ) +
+ # geom_point(aes(color = WTH._mean)) +
+  #  scale_color_gradient(low = "light blue", high = "dark blue")+
+  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  #theme_bw()
+
+#ggplot(BB1, aes(TS.5_mean, RecogC) ) +
+ # geom_point() +
+  #  scale_color_gradient(low = "light blue", high = "dark blue")+
+  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  #theme_bw()
+
+#ggplot(BB1, aes(TS.5_mean, RecogC) ) +
+ # geom_point(aes(color = WTH._mean)) +
+  #  scale_color_gradient(low = "light blue", high = "dark blue")+
+  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  #theme_bw()
 ```
+
+
 
 __BB2__ 
 
-```{r BB2 model reln between Reco and Temp and WTH}
+Again, removing WTH from the model does slightly improve the model, suggesting that at both sites Reco is more strongly driven by soil temperature than WTH. At BB2, including WTH in the model sig. (P<0.05) improves it. BB2 gets significantly drier than BB1, which is why there is such a strong control of WTH on Reco.
+
+```{r BB2 model reln between Reco and Temp and WTH, figures-side, fig.show="hold", out.width="50%"}
 # Polynomial regression: Check for non-linear relationships http://www.sthda.com/english/articles/40-regression-analysis/162-nonlinear-regression-essentials-in-r-polynomial-and-spline-regression-models/
 
 # Build the models
 model.1 <- lm(RecogC~ poly(TS.5_mean, 3, raw = TRUE), data = BB2)
 model.2 <- lm(RecogC~ poly(TS.5_mean, 2, raw = TRUE), data = BB2)
 model.3 <- lm(RecogC~ TS.5_mean, data = BB2)
-model.4 <- glm(RecogC~ TS.5_mean + I(TS.5_mean^3)+ WTH._mean, data = BB2) #need to check distribution.. i.e. is it normal?
+model.4 <- lm(RecogC~ TS.5_mean + I(TS.5_mean^3)+ WTH._mean, data = BB2) #need to check distribution.. i.e. is it normal? highest R2
 model.5 <- lm(RecogC ~ log(TS.5_mean), data = BB2)
 model.6 <- lm(log(RecogC) ~ TS.5_mean, data = BB2)
-model.7 <- lm(log(RecogC) ~ TS.5_mean + I(TS.5_mean^3), data = BB2) # model with highest R2
+model.7 <- lm(RecogC ~ TS.5_mean + I(TS.5_mean^3), data = BB2) # model with 2nd highest R2
 
-summ(model.7) # need to check if ols is meeting assumptions
+#summ(model.7) # need to check if ols is meeting assumptions
+#summ(model.4)
+
+#summary(model.7)
+#summary(model.4)
+
+anova(model.7, model.4)
 
 set.seed(123)
 training.samples2 <- BB2$RecogC %>%
@@ -591,114 +788,212 @@ test.data2 <- BB2[-training.samples2, ]
 predictions <- model.4 %>% predict(test.data2)
 
 # Model performance
-data.frame(
-  RMSE = RMSE(predictions, test.data2$RecogC),
-  R2 = R2(predictions, test.data2$RecogC)
-)
+#data.frame(
+ # RMSE = RMSE(predictions, test.data2$RecogC),
+  #R2 = R2(predictions, test.data2$RecogC)
+#)
 
 #not plotting the correct regression here - plotting 
-ggplot(train.data2, aes(TS.5_mean, RecogC) ) +
+#ggplot(train.data2, aes(TS.5_mean, RecogC) ) +
+ # geom_point(aes(color = WTH._mean)) +
+  #scale_color_gradient(low = "light blue", high = "dark blue")+
+  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  #theme_bw()
+
+```
+
+
+When comparing the two sites, note that whilst WTH was not a sig. important predictor for BB1, I have included it in the figure.
+In both figures the plotted line does not take into account WTH, but is y ~ x + x^3
+
+```{r compare BB1 and BB2 Reco, figures-side, fig.show="hold", out.width="50%"}
+ggplot(BB1, aes(TS.5_mean, RecogC) ) +
   geom_point(aes(color = WTH._mean)) +
   scale_color_gradient(low = "light blue", high = "dark blue")+
   stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  xlab("5cm soil temperature (deg C)")+
+  ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  ggtitle("BB1")+
+  theme_bw()
+
+ggplot(BB2, aes(TS.5_mean, RecogC) ) +
+  geom_point(aes(color = WTH._mean)) +
+  scale_color_gradient(low = "light blue", high = "dark blue")+
+  stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  xlab("5cm soil temperature (deg C)")+
+  ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  ggtitle("BB2")+
   theme_bw()
 ```
 
-
 __CH4 and temperature response__
 
-Non-linear response to temperature. Responses look quite similar at both sites, however when you look at the WTH response, there is a clear difference between this sites.
-Need to check the data because looks a bit suspsicious.
+Non-linear response to temperature. CH4 has a constant added and is log transformed. Response looks fairly similar between sites...
+
 Calculate Q10s for CH4? 
 
-```{r CH4 Temp response}
-(Temp.logCH4<- Flux.Env %>% #don't need to log transform CH4? 
-         filter(logCH4_mgC > 2) %>%
-  ggplot(., aes(TS.5_mean,logCH4_mgC,  color= Site)) +
-          scale_color_aaas()+
-     ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-   xlab('5cm soil temperature (deg C)')+
-  geom_point() +
-  theme_bw())
-
-(WTH.CH4<- Flux.Env %>%
-  #filter(WTH._mean > -12.0,
-   #      CH4_mgC > 2) %>%
-  ggplot(., aes(TS.5_mean,CH4_mgC,  color= Site)) +
-          scale_color_aaas()+
-     ylab(bquote(''~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-   xlab('5cm soil temperature (deg C)')+
-  geom_point() +
-  theme_bw())
-
-```
 
 __WTH and CH4__
 
 - WTD : follow instructions from Turetsky in regards to filtering out values so that we are comparing the same things. This will just make is easier to assess the difference in temperature response between the 2 sites, and does not reflect the different in WTD between the sites.
 
-The relationship look non-linear, and based on previous papers, a log relationship with WTH is often used, so I will try that. I will use a similar data analysis technique as shown in fig. 5 of the Turetsky paper: 'Correlation of temperature sensitivity and CH4 flux and the optimal water table position.'
+The relationship look non-linear. I will use a similar data analysis technique as shown in fig. 5 of the Turetsky paper: 'Correlation of temperature sensitivity and CH4 flux and the optimal water table position.'
 
-```{r CH4 reln with WTD}
+
+
+```{r CH4 Temp response}
+library(car)
+Flux.Env <- Flux.Env %>%
+  mutate(CH4mgC_RF_log = log(CH4mgC_f_RF + 26))
+
+```
+
+```{r split BB1 and BB2 data}
+BB1 <- Flux.Env %>%
+  filter(Site == "BB1")
+
+BB2 <- Flux.Env %>%
+  filter(Site == "BB2")
+```
+
+```{r, figures-side, fig.show="hold", out.width="50%"}
+#qqPlot(Flux.Env$CH4mgC_RF_log)
+
+#ggplot(data = Flux.Env, aes(CH4mgC_f_RF)) + geom_histogram()
+#ggplot(data = Flux.Env, aes(x = TS.5_mean, y = CH4mgC_f_RF)) +
+ # geom_point() #+
+   #scale_y_log10()
+
+#lmmodel <- lm(log(CH4mgC_f_RF + 26)~TS.5_mean, data = Flux.Env) # use this transformation
+#summary(lmmodel)
+
+Temp.logCH4<- Flux.Env %>% #don't need to log transform CH4? 
+         #filter(CH4mgC_RF_log > 2) %>%
+  ggplot(., aes(TS.5_mean,CH4mgC_RF_log, color= Site)) +
+          scale_color_aaas()+
+     ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+   xlab('5cm soil temperature (deg C)')+
+  geom_point() +
+  ggtitle("CH4 ~ Soil temp")+
+  theme_bw()
+Temp.logCH4
+
+
 (WTH.logCH4<- Flux.Env %>% #don't need to log transform CH4? 
-  filter(WTH._mean > -12.0,
+  filter(#WTH._mean > -12.0,
          logCH4_mgC > 2) %>%
-  ggplot(., aes(WTH._mean,logCH4_mgC,  color= Site)) +
+  ggplot(., aes(WTH._mean,CH4mgC_RF_log,  color= Site)) +
           scale_color_aaas()+
      ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
    xlab('WTH (cm)')+
   geom_point() +
-  theme_bw())
-
-(WTH.CH4<- Flux.Env %>%
-  filter(WTH._mean > -12.0) %>%
-  ggplot(., aes(WTH._mean,CH4_mgC,  color= Site)) +
-          scale_color_aaas()+
-     ylab(bquote(''~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-   xlab('WTH (cm)')+
-  geom_point() +
+    ggtitle(CH4 ~ WTH)+
   theme_bw())
 ```
 
 
+WTH is constrained here to be >-20 cm so we can compare the response of CH4 at both sites on a similar scale - sim. to Turetsky paper. 
+```{r WTH constrained}
+(WTH.logCH42<- Flux.Env %>%  
+  filter(WTH._mean > -20.0,
+         logCH4_mgC > 2) %>%
+  ggplot(., aes(WTH._mean,CH4mgC_RF_log,  color= Site)) +
+          scale_color_aaas()+
+     ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+   xlab('WTH (cm)')+
+  geom_point() +
+    ggtitle("CH4 ~ WTH")+
+  theme_bw())
+```
+
+__BB1__ 
+
+Having the TS * WTH interaction doesn't sig make the model better.
+
+```{r BB1 model reln between CH4 and Temp and WTH}
+model.1 <- lm(CH4mgC_RF_log ~ TS.5_mean, data = BB1)
+model.2 <- lm(CH4mgC_RF_log ~TS.5_mean + WTH._mean, data = BB1)
+model.3 <- lm(CH4mgC_RF_log ~TS.5_mean * WTH._mean, data = BB1)
+model.4 <- lm(CH4mgC_RF_log ~ TS.5_mean * poly(WTH._mean, 3, raw = TRUE) , data = BB1)  
+model.5 <- lm(CH4mgC_RF_log ~ TS.5_mean + I(WTH._mean ^3) *  WTH._mean, data = BB1) 
+
+#summary(model.3) #going to go with model 2
+anova(model.2, model.3)
+```
+
+
+__BB2__
+
+For BB2, inclding the interaction term does sig improve the models ability to predict CH4 fluxes. 
+```{r BB2 model reln between Reco and Temp and WTH}
+model.1 <- lm(logCH4_mgC ~ TS.5_mean, data = BB2)
+model.2 <- lm(logCH4_mgC ~TS.5_mean + WTH._mean, data = BB2)
+model.3 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB2)
+model.4 <- lm(logCH4_mgC ~ TS.5_mean * poly(WTH._mean, 3, raw = TRUE) , data = BB2)  # same as model 3? but R2 higher? 
+model.5 <- lm(logCH4_mgC ~ TS.5_mean + I(WTH._mean ^3) *  WTH._mean, data = BB2) 
+
+#summary(model.3) 
+anova(model.2, model.3)
+```
 
 
 
-```{r modeling CH4 reln to temp and WTH}
-library(AER)
+```{r compare BB1 and BB2 CH4, figures-side, fig.show="hold", out.width="50%"}
+ggplot(BB1, aes(WTH._mean, CH4mgC_RF_log)) +
+  geom_point(aes(color = TS.5_mean)) +
+  scale_color_gradient(low = "light blue", high = "dark blue")+
+  stat_smooth(method = lm, formula = y ~ x+c)+
+  xlab("5cm soil temperature (deg C)")+
+ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+  ggtitle("BB1")+
+  theme_bw()
+
+
+ggplot(BB2, aes(WTH._mean, CH4mgC_RF_log) ) +
+  geom_point(aes(color = TS.5_mean)) +
+  scale_color_gradient(low = "light blue", high = "dark blue")+
+  #stat_smooth(method = 'lm', formula = y ~ x)+
+  xlab("5cm soil temperature (deg C)")+
+ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+  ggtitle("BB2")+
+  theme_bw()
+```
+
+```{r CH4 model testing - not using, eval=FALSE, include=FALSE}
+#library(AER)
 
 # fit a simple linear model
-linear_model<- lm(logCH4_mgC ~ TS.5_mean*WTH._mean, data = BB1)
-summary(linear_model)
+#linear_model<- lm(logCH4_mgC ~ TS.5_mean*WTH._mean, data = BB1)
+#summary(linear_model)
 
 # fit the quadratic Model
-quadratic_model.1 <- glm(logCH4_mgC~ TS.5_mean + I(TS.5_mean^2) + WTH._mean, data = BB1)
-quadratic_model.2 <- glm(logCH4_mgC~ TS.5_mean + + I(TS.5_mean^2)+ I(TS.5_mean^3) + WTH._mean, data = BB1) #this one is better, but can it be better? When to include extra variables? 
-quadratic_model.3 <- glm(logCH4_mgC ~ poly(TS.5_mean, 3, raw = TRUE) + WTH._mean, data = BB1) #this is the same as model 2
+#quadratic_model.1 <- glm(logCH4_mgC~ TS.5_mean + I(TS.5_mean^2) + WTH._mean, data = BB1)
+#quadratic_model.2 <- glm(logCH4_mgC~ TS.5_mean + I(TS.5_mean^2)+ I(TS.5_mean^3) + WTH._mean, data = BB1) #this one is better, but can it be better? When to include extra variables? 
+#quadratic_model.3 <- glm(logCH4_mgC ~ poly(TS.5_mean, 3, raw = TRUE) + WTH._mean, data = BB1) #this is the same as model 2
 
-summ(quadratic_model.3)
+#summ(quadratic_model.2)
 
 # obtain the model summary
-coeftest(quadratic_model.2, vcov. = vcovHC, type = "HC1")
+#coeftest(quadratic_model.2, vcov. = vcovHC, type = "HC1")
 
 # draw a scatterplot of the observations for income and test score
-plot(BB1$TS.5_mean, BB1$logCH4_mgC,
-     col  = "steelblue",
-     pch = 20,
-     xlab = "TS.5_mean",
-     ylab = "logCH4_mgC",
-     main = "Estimated Linear and Quadratic Regression Functions")
+#plot(BB1$TS.5_mean, BB1$logCH4_mgC,
+ #    col  = "steelblue",
+  #   pch = 20,
+   #  xlab = "TS.5_mean",
+    # ylab = "logCH4_mgC",
+    # main = "Estimated Linear and Quadratic Regression Functions")
 
 # add a linear function to the plot
 #abline(linear_model, col = "black", lwd = 2)
 
 # add quatratic function to the plot
-order_id <- order(BB1$TS.5_mean)
+#order_id <- order(BB1$TS.5_mean)
 
-lines(x = BB1$TS.5_mean[order_id], 
-      y = fitted(quadratic_model.2)[order_id],
-      col = "red", 
-      lwd = 2) 
+#lines(x = BB1$TS.5_mean[order_id], 
+ #     y = fitted(quadratic_model.2)[order_id],
+  #    col = "red", 
+   #   lwd = 2) 
 
 ### finished here 15th feb
 #BB1.model$CH4.pred <- 4.88 - .24*(BB1.model$TS.5_mean) + 0.013*(I(BB1.model$TS.5_mean^2)) - 0.036*(BB1.model$WTH)
@@ -712,29 +1007,90 @@ lines(x = BB1$TS.5_mean[order_id],
 
 #ggplot(BB1.model, aes(TS.5_mean, logCH4_mgC))+geom_point() +
  #    geom_line(aes(y = CH4.pred), size = 1)
-quadratic_model.3 <- glm(logCH4_mgC ~ poly(TS.5_mean, 3, raw = TRUE) + WTH._mean, data = BB1) #this is the same as model 2
+#quadratic_model.3 <- glm(logCH4_mgC ~ poly(TS.5_mean, 3, raw = TRUE) + WTH._mean, data = BB1) #this is the same as model 2
 
 
-set.seed(123)
-training.samples.ch4 <- BB1$CH4_mgC %>%
-  createDataPartition(p = 0.8, list = FALSE)
-train.data2.ch4  <- BB1[training.samples2, ]
-test.data2.ch4 <- BB1[-training.samples2, ]
+#set.seed(123)
+#training.samples.ch4 <- BB1$CH4_mgC %>%
+ # createDataPartition(p = 0.8, list = FALSE)
+#train.data2.ch4  <- BB1[training.samples2, ]
+#test.data2.ch4 <- BB1[-training.samples2, ]
 
 # Make predictions
-predictions <- quadratic_model.3 %>% predict(test.data2.ch4)
+#predictions <- quadratic_model.3 %>% predict(test.data2.ch4)
 
 # Model performance
-data.frame(
-  RMSE = RMSE(predictions, test.data2.ch4$CH4_mgC),
-  R2 = R2(predictions, test.data2.ch4$CH4_mgC)
+#data.frame(
+ # RMSE = RMSE(predictions, test.data2.ch4$CH4_mgC),
+  #R2 = R2(predictions, test.data2.ch4$CH4_mgC)
 )
 
 #I'm not plotting the correct regression line here...
-ggplot(train.data2.ch4, aes(TS.5_mean, CH4_mgC) ) +
-  geom_point(aes(color = WTH._mean)) +
-  scale_color_gradient(low = "light blue", high = "dark blue")+
+#ggplot(train.data2.ch4, aes(TS.5_mean, CH4_mgC) ) +
+ # geom_point(aes(color = WTH._mean)) +
+  #scale_color_gradient(low = "light blue", high = "dark blue")+
   #stat_smooth(method = glm, formula = y ~ x + I(x^3) + WTH._mean)+
-  theme_bw()
+  #theme_bw()
 ```
 
+__CH4 emissions and C sequestration__
+
+- need to ask whether GPP is a significant driving factor for CH4 emissions (Fig 2 from Hemes paper)
+- from this data it seems like more vascular vegetation, driven by lower water tables, means that CH4 emissions are lower. This is surprising because I would've thought that more labile substrate from vascular veg --> more ch4 emissions, considering I dont think the SWC is limiting...
+- I need to see how close the linear regression is though at each site, i.e. what is the fit like
+
+```{r CH4 emissions and C sequestration}
+(CH4.Cseq.p <-Flux.input_data %>% 
+  ggplot(., aes(GPP_f, CH4mgC_f_RF, color = Site)) +
+  geom_point()+
+   geom_smooth(method = "lm", aes(colour = Site)) +
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+    scale_color_aaas()+
+  theme_bw())
+```
+
+
+Need to look into this more as the relationships look different between sites. Including GPP in the model for CH4 prediction really improves the R2 value for BB1. 
+
+```{r CH4 emissions and C sequestration BB1 and BB2 sep}
+CH4.GPPBB1 <- lm(CH4mgC_RF_log~GPP_f * TS.5_mean * WTH._mean, BB1)
+summary(CH4.GPPBB1)
+
+(CH4.Cseq.p1 <- ggplot(BB1, aes(GPP_f, CH4mgC_RF_log)) +
+  geom_point()+
+   #geom_smooth(method = "lm", aes(colour = Site)) +
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+    scale_color_aaas()+
+  theme_bw())
+
+CH4.GPPBB2 <- lm(CH4mgC_RF_log~GPP_f *TS.5_mean*WTH._mean, BB2)
+summary(CH4.GPPBB2)
+
+(CH4.Cseq.p1 <- ggplot(BB2, aes(GPP_f, CH4mgC_RF_log)) +
+  geom_point()+
+   #geom_smooth(method = "lm", aes(colour = Site)) +
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+    scale_color_aaas()+
+  theme_bw())
+```
+
+
+__GPP and NDVI__
+TBC!
+```{r GPP and NDVI}
+(GPP.NDVI.p <-Flux.Env %>% 
+  ggplot(., aes(NDVI, GPP_f, color = Site)) +
+  geom_line()+
+   #geom_smooth(method = "lm", aes(colour = Site)) +
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  #xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+   # ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+    scale_color_aaas()+
+  theme_bw())
+```
