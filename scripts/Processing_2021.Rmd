@@ -45,27 +45,22 @@ ind.NGS <- (Env.input_data$jday < 92 | Env.input_data$jday >=275)
 
 ### To do
 
+These results are accompanied with somewhat rambling thoughts trying to figure out what's going on. 
+
 - NDVI (26/2)
   - make sure gaps are filled better than they are now
   - When using this with GPP to support each other, could think about above vs. below ground productivity.
-
 - PAR...? I'm not using...
-
-- Environment/flux relationships
-
 - Calculate radiative forcing - have gotten some values from K. Nugents code, although still trying to figure out how to make it predict over time... I think what I have now is the radiative forcing currently... I have a value of ~ -3 for total RF (CO2 and CH4)
-
 - Compare my values to Nick and Brenda's to assess inter-annual variability.. (maybe)
-
-- Add in statistical analysis
-
+- Add in __statistical analysis__
 - For seasonal drivers, look more at end or see if ER or GPP at one site and specific season is driving it more or less.
-
-- calculate Q10s 
-
+- calculate Q10s. I had done this previously but I didn't include because there was such an important WTH effect...
 - __HYSTERESIS__ - if focusing more on WTH as diff between the sites. - effect on Reco and CH4..
+- surface plots of CH4 response to temp / wth / gpp ... working on
+- __UNCERTAINTY__
 
-- surface plots of CH4 response to temp / wth / gpp? 
+There is obviously still a lot to do but here is what it's all looking like so far... 
 
 
 ### Environmental variables
@@ -659,7 +654,7 @@ For any given soil temperature, respiration is higher at BB2 than BB1.
   ggplot(., aes(TS.5_mean, RecogC, color= Site)) +
        scale_color_aaas()+
    xlab('5cm Soil temperature (deg C)')+
-   ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+   ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
   geom_point()+
    ggtitle("Reco ~ Soil temp")+
   theme_bw())
@@ -669,7 +664,7 @@ For any given soil temperature, respiration is higher at BB2 than BB1.
   ggplot(., aes(WTH._mean, RecogC, color= Site)) +
        scale_color_aaas()+
    xlab('WTH(cm)')+
-   ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+   ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
     ggtitle("Reco ~ WTH")+
   geom_point()+
   theme_bw())
@@ -917,14 +912,14 @@ model.3 <- lm(CH4mgC_RF_log ~TS.5_mean * WTH._mean, data = BB1)
 model.4 <- lm(CH4mgC_RF_log ~ TS.5_mean * poly(WTH._mean, 3, raw = TRUE) , data = BB1)  
 model.5 <- lm(CH4mgC_RF_log ~ TS.5_mean + I(WTH._mean ^3) *  WTH._mean, data = BB1) 
 
-#summary(model.3) #going to go with model 2
+#summary(model.2) #going to go with model 2
 anova(model.2, model.3)
 ```
 
 
 __BB2__
 
-For BB2, inclding the interaction term does sig improve the models ability to predict CH4 fluxes. 
+For BB2, including the interaction term does sig improve the models ability to predict CH4 fluxes. 
 ```{r BB2 model reln between Reco and Temp and WTH}
 model.1 <- lm(logCH4_mgC ~ TS.5_mean, data = BB2)
 model.2 <- lm(logCH4_mgC ~TS.5_mean + WTH._mean, data = BB2)
@@ -1036,17 +1031,20 @@ ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
 __CH4 emissions and C sequestration__
 
 - need to ask whether GPP is a significant driving factor for CH4 emissions (Fig 2 from Hemes paper)
-- from this data it seems like more vascular vegetation, driven by lower water tables, means that CH4 emissions are lower. This is surprising because I would've thought that more labile substrate from vascular veg --> more ch4 emissions, considering I dont think the SWC is limiting...
+
+- It seems that for a given GPP, BB1 produces more CH4 than BB1 - maybe this could mean that at BB1, WTH is more important than the influence of vascular veg....  At BB2, more vascular vegetation, driven by lower water tables, means that CH4 emissions are lower. This is surprising because I would've thought that more labile substrate from vascular veg --> more ch4 emissions, considering I dont think the SWC is limiting...
+
 - I need to see how close the linear regression is though at each site, i.e. what is the fit like
 
+
 ```{r CH4 emissions and C sequestration}
-(CH4.Cseq.p <-Flux.input_data %>% 
-  ggplot(., aes(GPP_f, CH4mgC_f_RF, color = Site)) +
+(CH4.Cseq.p <-Flux.Env %>% 
+  ggplot(., aes(GPP_f, CH4mgC_RF_log, color = Site)) +
   geom_point()+
    geom_smooth(method = "lm", aes(colour = Site)) +
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
   xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
-    ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('Daily' ~logCH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
     scale_color_aaas()+
   theme_bw())
 ```
@@ -1054,7 +1052,9 @@ __CH4 emissions and C sequestration__
 
 Need to look into this more as the relationships look different between sites. Including GPP in the model for CH4 prediction really improves the R2 value for BB1. 
 
-```{r CH4 emissions and C sequestration BB1 and BB2 sep}
+At BB1, at a certain GPP value (~1), CH4 plateaus, suggesting there is some factor that is limiting CH4 production?
+
+```{r CH4 emissions and C sequestration BB1 and BB2 sep, figures-side, fig.show="hold", out.width="50%"}
 CH4.GPPBB1 <- lm(CH4mgC_RF_log~GPP_f * TS.5_mean * WTH._mean, BB1)
 summary(CH4.GPPBB1)
 
