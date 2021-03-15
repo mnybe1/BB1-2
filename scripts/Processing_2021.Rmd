@@ -47,20 +47,34 @@ ind.NGS <- (Env.input_data$jday < 92 | Env.input_data$jday >=275)
 
 These results are accompanied with somewhat rambling thoughts trying to figure out what's going on. 
 
-- NDVI (26/2)
-  - make sure gaps are filled better than they are now
-  - When using this with GPP to support each other, could think about above vs. below ground productivity.
-- PAR...? I'm not using...
-- Calculate radiative forcing - have gotten some values from K. Nugents code, although still trying to figure out how to make it predict over time... I think what I have now is the radiative forcing currently... I have a value of ~ -3 for total RF (CO2 and CH4)
-- Compare my values to Nick and Brenda's to assess inter-annual variability.. (maybe)
+- Need to decide whether using nighttime or day time partitioned CO2 fluxes (I think Night?). Using RF gf for CH4
+
+- PARin
+  - BB1 is still higher than BB2 even after the corrections I put in place over the summer. But so is SWradin so maybe it makes some sense...? 
+  
+  
+- Calculate __radiative forcing__ - have gotten some values from K. Nugents code, although still trying to figure out how to make it predict over time... I think what I have now is the radiative forcing currently... I have a value of ~ -3 for total RF (CO2 and CH4)
+  - Need a natural wetland GHG budget to use as reference? - see Petrescu et al. 2015 & Nugent et al. 2018
+  
+
 - Add in __statistical analysis__
-- For seasonal drivers, look more at end or see if ER or GPP at one site and specific season is driving it more or less.
-- calculate Q10s. I had done this previously but I didn't include because there was such an important WTH effect...
+  - Spearmans rank correlation (Helfter et al 2015)
+
+- calculate __Q10s__. 
+
+- check about when to use GF/non GF co2 and ch4 fluxes
+
 - __HYSTERESIS__ - if focusing more on WTH as diff between the sites. - effect on Reco and CH4..
-- surface plots of CH4 response to temp / wth / gpp ... working on
+  - could create index that splits the year into different stages, e.g. early GS, late GS, non GS...
+  
+  
 - __UNCERTAINTY__
 
-There is obviously still a lot to do but here is what it's all looking like so far... 
+
+_Later list:_
+- Diurnal  variation? 
+- Seasonal drivers? look more at end or see if ER or GPP at one site and specific season is driving it more or less.
+
 
 
 ### Environmental variables
@@ -243,12 +257,11 @@ ggplotly(P.p2)
 
 __SW in__
 
-Using data from BB2 only
 
 ```{r Incoming SW radiation, fig.width=10, fig.height=4}
-(Env.input_data %>% filter(Site == "BB2") %>%
+(Env.input_data  %>%
    ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), SWin_mean)) + 
-  geom_line()) +
+  geom_line(aes(color = Site))) +
   ylab("Incoming SW raditation (W m-2 day-1)")+
   xlab("Month")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
@@ -257,13 +270,25 @@ Using data from BB2 only
 ```
 
 
+__PAR__
+
+```{r PARin, fig.width=10, fig.height=4, message=FALSE, warning = FALSE}
+(Env.input_data %>%
+   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), PARin_mean)) + 
+  geom_line(aes(color = Site))) +
+  ylab("Incoming SW raditation (W m-2 day-1)")+
+  xlab("Month")+
+     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_aaas()+
+  theme_bw()
+```
 
 __NDVI__
 
 Notes: 
-- This needs lots of work to gap fill more accurately? 
+- Checked both a lienar and a spline fit - spline fit filled til the end of the year at seemed to fit the data better so going to go with that. Maybe should use linear? 
 
-```{r load NDVI data and gap fill, results=FALSE}
+```{r load NDVI data and gap fill, figures-side, fig.show="hold", out.width="50%"}
 NDVI1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB_ndvi/bb1_ndvi.csv')
 NDVI1$Site <- 'BB1'
 ind <- which(NDVI1$system.time_start == '13-Jul-20')
@@ -272,29 +297,72 @@ NDVI2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-M
 NDVI2$Site <- 'BB2'
 NDVI <- full_join(NDVI1, NDVI2)
 NDVI$DATE <- dmy(NDVI$system.time_start)
-ndvi.lm <- NDVI %>% pivot_wider(names_from = Site, values_from = NDVI)
-ndvi.lm <- lm(BB1~BB2, ndvi.lm)
-summary(ndvi.lm)
-coef.ndvi <- 0.94298
-intercept.ndvi <- -0.06652
 
-NDVI <- NDVI %>% filter(DATE >= "2020-01-01")
 NDVI$jday <- yday(NDVI$DATE)
+NDVI <- NDVI %>%
+  select(c(jday, Site, NDVI, DATE))
 
-jday <- c(1:366)
-JDAY <- data.frame(jday)
-NDVI.new<-merge(JDAY, NDVI,  by = 'jday', all.x = TRUE)
-NDVI.new <- NDVI.new %>%
-  select(c(jday, Site, NDVI))
 
-Env.input_data <- left_join(Env.input_data, NDVI.new)
-
-(NDVI.p <- ggplot(NDVI, aes(DATE, NDVI)) + 
+NDVI.p <- ggplot(NDVI, aes(DATE, NDVI)) + 
   geom_line(aes (color = Site)) +
     scale_x_date(date_breaks = "2 weeks") +
    scale_color_aaas()+
   theme_bw()+ 
-    theme(axis.text.x = element_text(angle = 90)))
+    theme(axis.text.x = element_text(angle = 90))
+
+BB1.NDVI <- NDVI %>% filter(Site == "BB1") %>% select(DATE, NDVI, Site)
+ApproxFun <- approxfun(x = BB1.NDVI$DATE, y = BB1.NDVI$NDVI)
+Dates <- seq.Date(ymd("2020-01-01"), ymd("2020-12-31"), by = 1)
+LinearFit <- ApproxFun(Dates)
+BB1 <- as.numeric(LinearFit)
+BB1.linear <- as.data.frame(BB1)
+
+SplineFun <- splinefun(x = BB1.NDVI$DATE, y = BB1.NDVI$NDVI)
+SplineFit <- SplineFun(Dates)
+#summary(SplineFit) #Use spline fit I think to gapfill
+BB1 <- as.numeric(SplineFit)
+BB1.spline <- as.data.frame(BB1)     # use spline because it does the whole year                
+BB1.spline$Site <- "BB1"
+BB1.spline$jday <- c(1:366)
+names(BB1.spline)[1] <- "SplineFit"
+
+plot(BB1.NDVI$DATE, y = BB1.NDVI$NDVI, ylim = c(0.3, 0.8))
+lines(Dates, SplineFit, col = "red")
+lines(Dates, LinearFit, col = "blue")   
+
+BB2.NDVI <- NDVI %>% filter(Site == "BB2") %>% select(DATE, NDVI, Site)
+ApproxFun <- approxfun(x = BB2.NDVI$DATE, y = BB2.NDVI$NDVI)
+Dates <- seq.Date(ymd("2020-01-01"), ymd("2020-12-31"), by = 1)
+LinearFit <- ApproxFun(Dates)
+BB2 <- as.numeric(LinearFit)
+BB2.linear <- as.data.frame(BB2)
+
+SplineFun <- splinefun(x = BB2.NDVI$DATE, y = BB2.NDVI$NDVI)
+SplineFit <- SplineFun(Dates)
+BB2 <- as.numeric(SplineFit)
+BB2.spline <-as.data.frame(SplineFit)
+BB2.spline$Site <- "BB2"
+BB2.spline$jday <- c(1:366)
+
+plot(BB2.NDVI$DATE, y = BB2.NDVI$NDVI, ylim = c(0.3, 0.8))
+lines(Dates, SplineFit, col = "red")
+lines(Dates, LinearFit, col = "blue") 
+
+NDVI.new <- full_join(BB1.spline, BB2.spline)
+names(NDVI.new)[1] <- "NDVI_sf"
+
+Env.input_data <- left_join(Env.input_data, NDVI.new)
+```
+
+```{r}
+(NDVI.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NDVI_sf)) + 
+ geom_line(aes(colour = Site)) +
+  ylab("NDVI")+
+  xlab("Month") +
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  ggtitle("") +
+   scale_color_aaas()+
+  theme_bw())
 ```
 
 
@@ -611,7 +679,7 @@ CO2eq %>%
   kable_classic(html_font = "Cambria")
 ```
 
-### Environmental effects on CO2 and CH4 fluxes
+### Environmental effects on CO2 fluxes
 
 ```{r join flux and environmental data}
 setwd(wd)
@@ -631,7 +699,6 @@ write.csv(Flux.Env, Final.output_file)
 ```
 
 
-
 __Ecosystem respiration and soil temperature__
 
 For any given soil temperature, respiration is higher at BB2 than BB1.
@@ -645,7 +712,7 @@ For any given soil temperature, respiration is higher at BB2 than BB1.
 - Is there a point in calculating Q10s if WTH is such an important driver? 
   - Should calculate Q10s.
 
-```{r Reco and Temp effect , figures-side, fig.show="hold", out.width="50%"}
+```{r Reco and Temp and WTH effect , figures-side, fig.show="hold", out.width="50%"}
 #NOTES:
 #Compare GS vs. Non GS - could compare the magnitude of difference to see if there is a particular time of year when the influence is higher
 
@@ -669,6 +736,10 @@ For any given soil temperature, respiration is higher at BB2 than BB1.
   geom_point()+
   theme_bw())
 ```
+
+
+
+
 ```{r split BB1 and BB2 data 1st time}
 BB1 <- Flux.Env %>%
   filter(Site == "BB1")
@@ -679,6 +750,14 @@ BB2 <- Flux.Env %>%
  
 
 __BB1__ 
+
+Calculate Q10 for ecosystem respiration. 
+
+```{r BB1 Reco Q10}
+Temp.Reco.BB1 <- lm(RecogC~TS.5_mean, data = BB1)
+summary(Temp.Reco.BB1)
+```
+
 
 For BB1, 2 models to predict Reco were very similar (model 4(with WTH) and model 7). Thinking of going with model 7, which doesn't include WTH. Within sites, how important is WTH in explaining Reco? Need to check model assumptions. Including water table height does not sig improve (0.09) model. Therefore Reco at BB1 is predominately driven by temperature, and not WTH.
 
@@ -821,6 +900,63 @@ ggplot(BB2, aes(TS.5_mean, RecogC) ) +
   theme_bw()
 ```
 
+
+__GPP and PAR__
+
+For a given PAR value, GPP is generally higher at BB2 than BB1, suggesting that BB2 has better LUE. 
+
+```{r GPP and PAR, warning = FALSE}
+(GPPPAR.p <-Flux.Env %>% 
+  ggplot(., aes(PARin_mean, GPP_DT, color = Site)) +
+  geom_point()+
+   geom_smooth(method = "lm", aes(colour = Site)) +
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+    xlab('PAR')+
+    scale_color_aaas()+
+  theme_bw())
+```
+
+
+__GPP and NDVI__
+
+Need to think about this more... what is the relationship? 
+
+- When using this with GPP to support each other, could think about above vs. below ground productivity.
+- check data? 
+- night time filled has -ve GPP valeus? 
+
+```{r GPP and NDVI, figures-side, fig.show="hold", out.width="50%"}
+(GPP_DT.NDVI.p <-Flux.Env %>% 
+  ggplot(., aes(NDVI_sf, GPP_DT, color = Site)) +
+  geom_point()+
+   geom_smooth(method = "loess", aes(colour = Site)) +
+   ggtitle("Day time filled GPP")+
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  #xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+   # ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+    scale_color_aaas()+
+  theme_bw())
+
+(GPP_f.NDVI.p <-Flux.Env %>% 
+  ggplot(., aes(NDVI_sf, GPP_f, color = Site)) +
+  geom_point()+
+   geom_smooth(method = "loess", aes(colour = Site)) +
+    ggtitle("Night time filled GPP")+
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  #xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+   # ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+    scale_color_aaas()+
+  theme_bw())
+```
+
+
+
+
+
+### Environmental effects on CH4 fluxes
+
+
 __CH4 and temperature response__
 
 Non-linear response to temperature. CH4 has a constant added and is log transformed. Response looks fairly similar between sites...
@@ -834,6 +970,7 @@ __WTH and CH4__
 
 The relationship look non-linear. I will use a similar data analysis technique as shown in fig. 5 of the Turetsky paper: 'Correlation of temperature sensitivity and CH4 flux and the optimal water table position.'
 
+It would be good to plot a timeseries of WTH and CH4 flux as in Brown et al (2014). Also fig. 5 could be a way to plot CH4/WTH/Soil temp relations
 
 
 ```{r CH4 Temp response}
@@ -851,7 +988,7 @@ BB2 <- Flux.Env %>%
   filter(Site == "BB2")
 ```
 
-```{r, figures-side, fig.show="hold", out.width="50%"}
+```{r CH4 temp and WTH response both sites, figures-side, fig.show="hold", out.width="50%"}
 #qqPlot(Flux.Env$CH4mgC_RF_log)
 
 #ggplot(data = Flux.Env, aes(CH4mgC_f_RF)) + geom_histogram()
@@ -938,7 +1075,7 @@ anova(model.2, model.3)
 ggplot(BB1, aes(WTH._mean, CH4mgC_RF_log)) +
   geom_point(aes(color = TS.5_mean)) +
   scale_color_gradient(low = "light blue", high = "dark blue")+
-  stat_smooth(method = lm, formula = y ~ x+c)+
+  #stat_smooth(method = lm, formula = y ~ x+c)+
   xlab("WTH (cm)")+
 ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   ggtitle("BB1")+
@@ -953,6 +1090,68 @@ ggplot(BB2, aes(WTH._mean, CH4mgC_RF_log) ) +
 ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   ggtitle("BB2")+
   theme_bw()
+```
+
+```{r BB2 surface plots with CH4, warning=FALSE, echo = FALSE, message = FALSE}
+#using tutorial from: http://www.wekaleamstudios.co.uk/posts/creating-surface-plots/#9mzSsIgKCZg
+
+library(geoR)
+data("elevation")
+
+BB2$CH4mgC_pred <- 3.293 + (0.047 * BB2$TS.5_mean) + (0.005 * BB2$WTH._mean) - (-0.001 * (BB2$TS.5_mean * BB2$WTH._mean))
+
+BB2.surface <- BB2 %>% select(TS.5_mean, WTH._mean, CH4mgC_f_RF)
+
+BB2.loess <- loess(CH4mgC_f_RF~TS.5_mean*WTH._mean, data = BB2.surface)
+
+BB2.fit <- expand.grid(TS.5_mean = seq(0, 25, 1), WTH._mean = seq(-40, 15, 5))
+#BB2.fit[1:20,]
+z = predict(BB2.loess, newdata = BB2.fit)
+BB2.fit$CH4mgC <- as.numeric(z)
+
+BB2.surf <- wireframe(CH4mgC~TS.5_mean*WTH._mean, data = BB2.fit,
+          drape = TRUE,
+  colorkey = TRUE,
+  scales = list( arrows = FALSE),
+   zlab = list("CH4 mgC", rot = 90),
+  ylab = list("WTH", rot = 45),
+  main = ("BB2"),
+   screen = list(z = 160, x = -60))
+```
+
+```{r BB1 surface plots with CH4, warning = FALSE, echo = FALSE, message = FALSE}
+#using tutorial from: http://www.wekaleamstudios.co.uk/posts/creating-surface-plots/#9mzSsIgKCZg
+
+#summary(lm(CH4mgC_RF_log ~TS.5_mean + WTH._mean, data = BB1))
+
+BB1$CH4mgC_pred <- 3.139 + (0.077 * BB1$TS.5_mean) - (0.028 * BB1$WTH._mean)
+
+BB1.surface <- BB1 %>% select(TS.5_mean, WTH._mean, CH4mgC_f_RF)
+
+BB1.loess <- loess(CH4mgC_f_RF~TS.5_mean*WTH._mean, data = BB1.surface)
+
+BB1.fit <- expand.grid(TS.5_mean = seq(0, 25, 1), WTH._mean = seq(-40, 15, 5))
+#BB1.fit[1:20,]
+z = predict(BB1.loess, newdata = BB1.fit)
+BB1.fit$CH4mgC <- as.numeric(z)
+
+BB1.surf <- wireframe(CH4mgC~TS.5_mean*WTH._mean, data = BB1.fit,
+          drape = TRUE,
+  colorkey = TRUE,
+  scales = list( arrows = FALSE),
+  zlab = list("CH4 mgC", rot = 90),
+  ylab = list("WTH", rot = 45),
+  main = "BB1",
+   screen = list(z = 160, x = -60))
+
+###Look into 3D plot for other surface plotting options
+```
+
+
+```{r both surface plots, figures-side, fig.show="hold", out.width="50%"}
+BB1.surf
+
+BB2.surf
 ```
 
 ```{r CH4 model testing - not using, eval=FALSE, include=FALSE}
@@ -1029,69 +1228,67 @@ ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   #theme_bw()
 ```
 
+
+
+### CH4 and CO2 relationships
+
 __CH4 emissions and C sequestration__
 
 - need to ask whether GPP is a significant driving factor for CH4 emissions (Fig 2 from Hemes paper)
 
-- It seems that for a given GPP, BB1 produces more CH4 than BB1 - maybe this could mean that at BB1, WTH is more important than the influence of vascular veg....  At BB2, more vascular vegetation, driven by lower water tables, means that CH4 emissions are lower. This is surprising because I would've thought that more labile substrate from vascular veg --> more ch4 emissions, considering I dont think the SWC is limiting...
+- It seems that for a given value of NEE <0, BB1 produces more CH4 than BB1 - maybe this could mean that at BB1, WTH is more important than the influence of vascular veg....  At BB2, more vascular vegetation, driven by lower water tables, means that CH4 emissions are lower. This is surprising because I would've thought that more labile substrate from vascular veg --> more ch4 emissions, considering I dont think the SWC is limiting...
 
-- I need to see how close the linear regression is though at each site, i.e. what is the fit like
-
+- Below both sites are plotted differently and it looks like there are differences between their relationships.
 
 ```{r CH4 emissions and C sequestration}
 (CH4.Cseq.p <-Flux.Env %>% 
-  ggplot(., aes(GPP_f, CH4mgC_RF_log, color = Site)) +
+  ggplot(., aes(NEE_f, CH4mgC_RF_log, color = Site)) +
   geom_point()+
-   geom_smooth(method = "lm", aes(colour = Site)) +
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+   geom_smooth(method = "glm", aes(colour = Site)) +
+  scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  xlab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
     ylab(bquote('Daily' ~logCH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
     scale_color_aaas()+
   theme_bw())
 ```
 
 
-Need to look into this more as the relationships look different between sites. Including GPP in the model for CH4 prediction really improves the R2 value for BB1. 
-
-At BB1, at a certain GPP value (~1), CH4 plateaus, suggesting there is some factor that is limiting CH4 production?
 
 ```{r CH4 emissions and C sequestration BB1 and BB2 sep, figures-side, fig.show="hold", out.width="50%"}
-CH4.GPPBB1 <- lm(CH4mgC_RF_log~GPP_f * TS.5_mean * WTH._mean, BB1)
-summary(CH4.GPPBB1)
+CH4.GPPBB1 <- lm(CH4mgC_RF_log~NEE_f * TS.5_mean * WTH._mean, BB1)
+#summary(CH4.GPPBB1)
 
-(CH4.Cseq.p1 <- ggplot(BB1, aes(GPP_f, CH4mgC_RF_log)) +
+(CH4.Cseq.p1 <- ggplot(BB1, aes(NEE_f, CH4mgC_RF_log)) +
   geom_point()+
    #geom_smooth(method = "lm", aes(colour = Site)) +
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+  xlab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
     ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
     scale_color_aaas()+
   theme_bw())
 
-CH4.GPPBB2 <- lm(CH4mgC_RF_log~GPP_f *TS.5_mean*WTH._mean, BB2)
-summary(CH4.GPPBB2)
+CH4.GPPBB2 <- lm(CH4mgC_RF_log~NEE_f *TS.5_mean*WTH._mean, BB2)
+#summary(CH4.GPPBB2)
 
-(CH4.Cseq.p1 <- ggplot(BB2, aes(GPP_f, CH4mgC_RF_log)) +
+(CH4.Cseq.p1 <- ggplot(BB2, aes(NEE_f, CH4mgC_RF_log)) +
   geom_point()+
    #geom_smooth(method = "lm", aes(colour = Site)) +
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+  xlab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
     ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
     scale_color_aaas()+
   theme_bw())
 ```
 
 
-__GPP and NDVI__
-TBC!
-```{r GPP and NDVI}
-(GPP.NDVI.p <-Flux.Env %>% 
-  ggplot(., aes(NDVI, GPP_f, color = Site)) +
-  geom_line()+
+
+```{r ch4 hysteresis with soil temp}
+(CH4.soilT.hys <- ggplot(Flux.Env, aes(TS.5_mean, CH4mgC_RF_log)) +
+  geom_point(aes(shape = Period, color = Site), size = 3)+
    #geom_smooth(method = "lm", aes(colour = Site)) +
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  #xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
-   # ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+  xlab('Soil temperature')+
+    ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
     scale_color_aaas()+
   theme_bw())
 ```
