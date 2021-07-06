@@ -2,7 +2,8 @@
 title: "Processing_2021"
 author: "Marion Nyberg"
 date: "05/03/2021"
-output: html_document
+output:
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -26,6 +27,10 @@ library(ggsci)
 library(effects)
 library(broom)
 library(jtools)
+library(MuMIn)
+library(ggpubr)
+library(viridis)
+
 
 rm(list=ls())
 ```
@@ -34,48 +39,23 @@ rm(list=ls())
 wd <- '~/Google Drive/Micromet Lab/People/2019-Marion Nyberg/BB1-2'
 setwd(wd)
 
-Env.input_file <- "data/Full.csv" #All data (GS and NGS), below 2 new data frames separated into GS and NGS
+Env.input_file <- "data/Full.csv" #import all data (GS and NGS), below 2 new data frames separated into GS and NGS
 Env.input_data <- read.csv(Env.input_file) 
 
 ind.GS <- (Env.input_data$jday >= 92 & Env.input_data$jday <= 274)
 ind.NGS <- (Env.input_data$jday < 92 | Env.input_data$jday >=275)
+
+Env.input_data$Period <- " "
+Env.input_data$Period[ind.GS] <- "GS"
+Env.input_data$Period[ind.NGS] <- "NGS"
+
+Env.input_data$Site <- revalue(Env.input_data$Site, c("BB1"="CA-DBB", "BB2"="CA-DB2")) #rename factors
+
+CA_DBB <- Env.input_data %>% filter(Site == "CA-DBB") #all data separated by site
+CA_DB2 <- Env.input_data %>% filter(Site == "CA-DB2")
 ```
 
 ## {.tabset .tabset-fade}
-
-### To do
-
-These results are accompanied with somewhat rambling thoughts trying to figure out what's going on. 
-
-- Need to decide whether using nighttime or day time partitioned CO2 fluxes (I think Night?). Using RF gf for CH4
-
-- PARin
-  - BB1 is still higher than BB2 even after the corrections I put in place over the summer. But so is SWradin so maybe it makes some sense...? 
-  
-  
-- Calculate __radiative forcing__ - have gotten some values from K. Nugents code, although still trying to figure out how to make it predict over time... I think what I have now is the radiative forcing currently... I have a value of ~ -3 for total RF (CO2 and CH4)
-  - Need a natural wetland GHG budget to use as reference? - see Petrescu et al. 2015 & Nugent et al. 2018
-  
-
-- Add in __statistical analysis__
-  - Spearmans rank correlation (Helfter et al 2015)
-
-- calculate __Q10s__. 
-
-- check about when to use GF/non GF co2 and ch4 fluxes
-
-- __HYSTERESIS__ - if focusing more on WTH as diff between the sites. - effect on Reco and CH4..
-  - could create index that splits the year into different stages, e.g. early GS, late GS, non GS...
-  
-  
-- __UNCERTAINTY__
-
-
-_Later list:_
-- Diurnal  variation? 
-- Seasonal drivers? look more at end or see if ER or GPP at one site and specific season is driving it more or less.
-
-
 
 ### Environmental variables
 
@@ -90,10 +70,46 @@ Ta.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-0
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw()
+  theme_bw()+
+  theme(axis.text = element_text(size=8),
+    axis.title.x=element_blank(),
+        #axis.text.x=element_blank(),
+        #axis.ticks.x=element_blank(),
+    legend.position = "none")
 ggplotly(Ta.p)
 
-kruskal.test(Ta_mean~Site, data = Env.input_data)
+t.test(Ta_mean~Site, data = Env.input_data)
+
+Env.input_data %>% group_by(Site, Period) %>%
+  summarise(mean(Ta_mean))
+
+shapiro.test(Env.input_data$Ta_mean)
+```
+
+```{r VPD, fig.width=10, fig.height=4}
+(VPD.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), VPD_mean)) + #as.Date adds the month names into the plot
+  #geom_ribbon(aes(ymin = Ta_min -1 , ymax = Ta_max+1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("Vapor pressure \ndeficit (kPa)")+
+  xlab("Month") +
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+   scale_color_jco()+
+  theme_bw()+
+   ggtitle ("c")+
+  theme(axis.text = element_text(size=13),
+        axis.title = element_text(size=14),
+    #axis.title.x=element_blank(),
+     #   axis.text.x=element_blank(),
+      #  axis.ticks.x=element_blank(),
+    legend.position = "none"))
+
+kruskal.test(VPD_mean~Site, data = Env.input_data)
+
+Env.input_data %>% group_by(Site) %>%
+  summarise(mean(VPD_mean))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/VPD.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
 ```
 
 __Relative humidity__
@@ -107,47 +123,130 @@ RH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-0
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw()
+  theme_bw() +
+  theme(axis.text = element_text(size=8),
+    axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "none")
 ggplotly(RH.p)
 
 kruskal.test(RH_mean~Site, data = Env.input_data)
+
+Env.input_data %>% group_by(Site, Period) %>%
+  summarise(mean(RH_mean))
 ```
 
 __Water table height__
 
 ```{r Water table height, fig.width=10, fig.height=4}
-WTH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
+(WTH.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = WTH._min -1 , ymax = WTH._max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
-   ylab("Water table height (cm)")+
+   ylab("Water table \nheight (cm)")+
   xlab("Month") +
-   #ggtitle("Air temperature at BB1 and BB2")+
+   ggtitle("b")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-   scale_color_aaas()+
-  theme_bw()
-ggplotly(WTH.p)
+          #scale_color_viridis(discrete = "TRUE", option = "D", begin = 0, end = 0.5)+
+   scale_color_jco()+
+  theme_bw() +
+  theme(axis.text = element_text(size=14),
+        axis.title = element_text(size=15),
+        #legend.title = element_text(size = 15),
+        #legend.text = element_text(size = 15),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"))
 
-kruskal.test(WTH._mean~Site, data = Env.input_data)
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/WTH.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+
+# to fill WTH gaps: linearly interpolate (BB1)
+BB1.WTH <- Env.input_data %>% dplyr::select(Site, jday, WTH._mean)
+BB1.WTH <- BB1.WTH %>% filter(Site == "CA-DBB")
+ApproxFun <- approxfun(x = BB1.WTH$jday, y = BB1.WTH$WTH._mean)
+Dates <- seq(1, 366, by = 1)
+LinearFit <- ApproxFun(Dates)
+BB1 <- as.numeric(LinearFit)
+BB1.linear <- as.data.frame(BB1)
+
+Env.input_data$WTH._mean<- ifelse(Env.input_data$Site == 'CA-DBB', NA, Env.input_data$WTH._mean)
+Env.input_data$WTH._mean[which(is.na(Env.input_data$WTH._mean))] = BB1.linear$BB1
+
+
+t.test(WTH._mean~Site, data = Env.input_data)
+
+Env.input_data %>% group_by(Site, Period) %>%
+  summarise(min(WTH._mean, na.rm = TRUE))
 ```
 
 __5cm soil temperature__
 
 ```{r T5cm Soil temperature, fig.width=10, fig.height=4}
-TS.5.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
+(TS.5.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.5_mean)) + #as.Date adds the month names into the plot
   #geom_ribbon(aes(ymin = TS.5_min -1 , ymax = TS.5_max+1), fill = "light grey")+
     geom_line(aes (color=Site)) +
-   ylab("5cm soil temperature (deg C)")+
+  ylab("5cm soil \ntemperature (°C)")+
   xlab("Month") +
-   #ggtitle("Air temperature at BB1 and BB2")+
+   ggtitle("a")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-   scale_color_aaas()+
-  theme_bw()
-ggplotly(TS.5.p)
+   scale_color_jco()+
+       #scale_color_viridis(discrete = "TRUE", option = "D", begin = 0, end = 0.5)+
+  theme_bw()+
+  theme(legend.key.size = unit(1.5,"line"),
+        axis.title = element_text(size=15),
+        axis.text = element_text(size=14),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.text = element_text(size =13),
+      legend.title = element_text(size = 13),
+       legend.position=c(0.1, 0.81)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/TS5.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+Env.input_data$TS.5_mean <- ifelse(Env.input_data$TS.5_mean<0, NA, Env.input_data$TS.5_mean)
+
+# to fill TS.5 gaps: linearly interpolate (BB1)
+BB1.TS5 <- Env.input_data %>% dplyr::select(Site, jday, TS.5_mean) %>%
+ filter(Site == "CA-DBB")
+
+ApproxFun <- approxfun(x = BB1.TS5$jday, y = BB1.TS5$TS.5_mean)
+Dates <- seq(1, 366, by = 1)
+LinearFit <- ApproxFun(Dates)
+BB1 <- as.numeric(LinearFit)
+BB1.linear <- as.data.frame(BB1)
+
+Env.input_data$TS.5_mean<- ifelse(Env.input_data$Site == 'CA-DBB', NA, Env.input_data$TS.5_mean)
+Env.input_data$TS.5_mean[which(is.na(Env.input_data$TS.5_mean))] = BB1.linear$BB1
+
+# to fill TS.5 gaps: linearly interpolate (BB2)
+BB2.TS5 <- Env.input_data %>% select(Site, jday, TS.5_mean) %>%
+ filter(Site == "CA-DB2")
+
+ApproxFun <- approxfun(x = BB2.TS5$jday, y = BB2.TS5$TS.5_mean)
+Dates <- seq(1, 366, by = 1)
+LinearFit <- ApproxFun(Dates)
+BB2 <- as.numeric(LinearFit)
+BB2.linear <- as.data.frame(BB2)
+
+Env.input_data$TS.5_mean<- ifelse(Env.input_data$Site == 'CA-DB2', NA, Env.input_data$TS.5_mean)
+Env.input_data$TS.5_mean[which(is.na(Env.input_data$TS.5_mean))] = BB2.linear$BB2
+
 
 kruskal.test(TS.5_mean~Site, data = Env.input_data)
+
+Env.input_data %>% group_by(Site, Period) %>%
+  summarise(mean(TS.5_mean, na.rm = TRUE))
+
+
+TS5WTH <- ggarrange(TS.5.p, WTH.p, VPD.p, nrow=3, common.legend = TRUE, align = "v", heights = c(1.05,1.1, 1.2))
+TS5WTH
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/TS5WTH.jpeg", width = 10, height = 7, device='jpeg', dpi=300)
+
 ```
 
-__10cm soil temperature__
+__10cm soil temperature__ - not using
 
 ```{r T10cm Soil temperature, fig.width=10, fig.height=4}
 TS.10.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), TS.10_mean)) + #as.Date adds the month names into the plot
@@ -158,35 +257,69 @@ TS.10.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-0
    #ggtitle("Air temperature at BB1 and BB2")+
    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
    scale_color_aaas()+
-  theme_bw()
+  theme_bw()+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "none")
 ggplotly(TS.10.p)
+ 
+Env.input_data$TS.10_mean <- ifelse(Env.input_data$TS.10_mean<0, NA, Env.input_data$TS.10_mean)
+
+# to fill TS.10 gaps: linearly interpolate (BB1)
+BB1.TS10 <- Env.input_data %>% select(Site, jday, TS.10_mean) %>%
+ filter(Site == "CA-DBB")
+
+ApproxFun <- approxfun(x = BB1.TS10$jday, y = BB1.TS10$TS.10_mean)
+Dates <- seq(1, 366, by = 1)
+LinearFit <- ApproxFun(Dates)
+BB1 <- as.numeric(LinearFit)
+BB1.linear <- as.data.frame(BB1)
+
+Env.input_data$TS.10_mean<- ifelse(Env.input_data$Site == 'CA-DBB', NA, Env.input_data$TS.10_mean)
+Env.input_data$TS.10_mean[which(is.na(Env.input_data$TS.10_mean))] = BB1.linear$BB1
+
+# to fill TS.10 gaps: linearly interpolate (BB2)
+BB2.TS10 <- Env.input_data %>% select(Site, jday, TS.10_mean) %>%
+ filter(Site == "CA-DB2")
+
+ApproxFun <- approxfun(x = BB2.TS10$jday, y = BB2.TS10$TS.10_mean)
+Dates <- seq(1, 366, by = 1)
+LinearFit <- ApproxFun(Dates)
+BB2 <- as.numeric(LinearFit)
+BB2.linear <- as.data.frame(BB2)
+
+Env.input_data$TS.10_mean<- ifelse(Env.input_data$Site == 'CA-DB2', NA, Env.input_data$TS.10_mean)
+Env.input_data$TS.10_mean[which(is.na(Env.input_data$TS.10_mean))] = BB2.linear$BB2
+
 
 kruskal.test(TS.10_mean~Site, data = Env.input_data)
+
+Env.input_data %>% group_by(Site, Period) %>%
+  summarise(mean(TS.10_mean, na.rm = TRUE))
 ```
 
 __Precipitation__
 
 Notes:
-- No Env Can precip data at nearby weather station for start of 2020
-
 - 10 year average data presented below
 
 ```{r Precipitation}
 library(reshape2)
 #Load Environment Canada precipitation data and re-format:
 EC_precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/data/EC_precip2021.csv') 
-EC_precip$Timestamp <- as.POSIXlt(EC_precip$Timestamp, format = "%Y-%m-%d")
-EC_precip$month <- months(EC_precip$Timestamp, abbreviate = TRUE)
-EC_precip <- EC_precip %>%
-   select(c(month, jday, Site, Precip_mean)) %>%
-  group_by(month) %>%
-  mutate(Cumsum = cumsum(Precip_mean))
+#EC_precip$Timestamp <- as.POSIXlt(EC_precip$Timestamp, format = "%Y-%m-%d")
+#EC_precip$month <- months(EC_precip$Timestamp, abbreviate = TRUE)
+#EC_precip <- EC_precip %>%
+ #  select(c(month, jday, Site, Precip_mean)) %>%
+  #group_by(month) %>%
+  #mutate(Cumsum = cumsum(Precip_mean))
 
 
 #cs <- cumsum(x)
 #cs[miss] <- NA
 #Precip data frame has the daily total
-Precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/met_data/cr1000/BBPCT.csv') 
+Precip <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/BBPCT.csv') 
 miss <- is.na(Precip)
 Precip[miss] <- 0
 Precip$Time..PST. <- as.POSIXlt(Precip$Time..PST., format = "%Y-%m-%d")
@@ -217,28 +350,14 @@ Precip.2 <- Precip.2 %>%
   group_by(Site, month) %>%
   mutate(Cumsum = cumsum(Precip_mean))
 
+ind.GS <- (Precip.2$jday >= 92 & Precip.2$jday <= 274)
+ind.NGS <- (Precip.2$jday < 92 | Precip.2$jday >=275)
 
+Precip.2$Period <- ''
+Precip.2$Period[ind.GS] <- 'GS'
+Precip.2$Period[ind.NGS] <- 'NGS'
 
-#Precip <- Env.input_data %>% 
- #  select(Precip_mean, Site, jday, month) %>%
-  # group_by(Site, month) %>%
-   #mutate(Precip_mean = Precip_mean*10) %>%
-   #full_join(., EC_precip) %>%
-  #group_by(Site, month) %>%
-  # mutate(Precip.cumsum = cumsum(Precip_mean))
-
-#Precip <- Env.input_data %>% 
- #  select(Precip_mean, Site, jday, month) %>%
-  # group_by(Site, month) %>%
-  #summarise(Precip = (cumsum(Precip_mean) * 10))
-
-#P.p <- ggplot(Precip.cumsum, aes(month, Cumsum.Precip, fill = Site)) + 
- # geom_col(position = 'dodge') +
-  # scale_x_discrete(limits = month.abb) +
-  #ylab("Precipitaion (mm)")+
-   #scale_fill_aaas()+
-  #theme_bw()
-#ggplotly(P.p)
+Precip.2$Site <- revalue(Precip.2$Site, c("BB1"="CA-DBB", "BB2"="CA-DB2", "EC" = "ECCC")) #rename factors
 
 Precip.3 <- Precip.2 %>%
   full_join(., EC_precip) %>%
@@ -252,117 +371,256 @@ P.p2 <- ggplot(Precip.3, aes(month, Cumsum, fill = Site)) +
   theme_bw()
 ggplotly(P.p2)
 
+Precip.3 %>% group_by(Site) %>% summarise(sum(Precip_mean))
+
+ind.GS.P <- (Precip.3$month == 'Apr' | Precip.3$month == 'May'|Precip.3$month == 'Jun'|Precip.3$month == 'Jul'|Precip.3$month == 'Aug'|Precip.3$month == 'Sep')
+ind.NGS.P <- (Precip.3$month == 'Oct' | Precip.3$month == 'Nov'|Precip.3$month == 'Dec'|Precip.3$month == 'Jan'|Precip.3$month == 'Feb'|Precip.3$month == 'Mar')
+
+Precip.3$Period <- ''
+Precip.3$Period[ind.GS.P] <- 'GS'
+Precip.3$Period[ind.NGS.P] <- 'NGS'
+
+Precip.3 %>% group_by(Site, Period) %>% summarise(sum(Precip_mean))
+
+kruskal.test(Cumsum~Site, data = Precip.2)
 ```
 
 
 __SW in__
-
+ - just using BB2
 
 ```{r Incoming SW radiation, fig.width=10, fig.height=4}
-(Env.input_data  %>%
+(SWin.p <- Env.input_data  %>%
+   filter(Site == "CA-DB2") %>%
    ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), SWin_mean)) + 
-  geom_line(aes(color = Site))) +
-  ylab("Incoming SW raditation (W m-2 day-1)")+
+  geom_line() +
+  ylab(bquote('Incoming SW raditation (W' ~m^-2~ day^-1*')'))+
   xlab("Month")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-   scale_color_aaas()+
-  theme_bw()
+   scale_color_jco()+
+  theme_bw()+
+  theme(axis.text = element_text(size=14),
+        axis.title = element_text(size=15),
+        legend.position = "none"))
+
+Env.input_data %>%
+  summarise(mean(SWin_mean))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/SWin.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
 ```
 
 
 __PAR__
 
+just using BB2 
+
 ```{r PARin, fig.width=10, fig.height=4, message=FALSE, warning = FALSE}
-(Env.input_data %>%
-   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), PARin_mean)) + 
-  geom_line(aes(color = Site))) +
-  ylab("Incoming SW raditation (W m-2 day-1)")+
+Parin <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/met_corrected_gapfilledBB2.csv') %>% filter(DATE >= '2020-01-01 00:00:00' & DATE <'2021-01-01 00:00:00') %>%
+  dplyr::select(DATE, jday, INCOMING_PAR)
+Parin$DATE <- as.POSIXct(Parin$DATE, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+Parin$TIME <- format(Parin$DATE, format = "%H:%M:%S", tz="UTC")
+Parin$month <- months(Parin$DATE, abbreviate = TRUE)
+
+
+ind.GS <- (Parin$jday >= 92 & Parin$jday <= 274)
+ind.NGS <- (Parin$jday < 92 | Parin$jday >=275)
+
+Parin$Period <- " "
+Parin$Period[ind.GS] <- "GS"
+Parin$Period[ind.NGS] <- "NGS"
+
+Parin.2<- Parin %>% mutate(Parin.30 = INCOMING_PAR*1800) %>%
+  group_by(jday) %>%
+  mutate(Parin.daily = cumsum(Parin.30)) %>%
+  mutate(Parcum.mol = Parin.daily/1000000)
+
+
+Daily.Par <- Parin.2 %>%
+  group_by(jday) %>%
+  summarise_all(last)
+#Daily.Par <- Daily.Par[-c(68),]
+
+
+Monthly.Par <- Daily.Par %>%
+  group_by(month) %>% mutate(
+    Parin.cumsum.month =cumsum(Parcum.mol)) %>%
+  arrange(month) %>%
+  group_by(month) %>%
+  summarise_all(last)
+
+Monthly.Par$month <- as.factor(Monthly.Par$month)
+
+Monthly.Par %>% group_by(Period) %>% summarise(sum(Parin.cumsum.month))
+  
+(Parin.p <- Daily.Par %>%
+   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Parcum.mol)) + 
+  geom_line(aes(color = "Parcum.mol")) +
+    ylab(bquote('Incoming PAR (mol'~m^-2~day^-1*')'))+
   xlab("Month")+
+    ggtitle("b") +
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-   scale_color_aaas()+
-  theme_bw()
+   scale_color_jco()+
+  theme_bw()+
+  theme(axis.text = element_text(size=14),
+        axis.title = element_text(size=15),
+        legend.position = "none"))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/PARin.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+
+(PAR.p <- 
+  ggplot(Monthly.Par, aes(month, Parin.cumsum.month)) + 
+  geom_col(position = 'dodge', aes(fill = "Parin.cumsum.month")) +
+   scale_x_discrete(limits = month.abb) +
+  ylab(bquote('Incoming PAR ( mol'  ~m^-2~month^-1*')'))+
+    xlab("Month")+
+    ggtitle("b")+
+   scale_fill_jco()+
+    #scale_fill_manual(values = "#0073C2FF")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size=15),
+       # axis.text.x = element_blank(),
+      #axis.title.x = element_blank(),
+      legend.position = "none"))
+
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/PARinbar.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+
 ```
 
 __NDVI__
 
 Notes: 
 - Checked both a lienar and a spline fit - spline fit filled til the end of the year at seemed to fit the data better so going to go with that. Maybe should use linear? 
+- Going to go with linear fit...
 
 ```{r load NDVI data and gap fill, figures-side, fig.show="hold", out.width="50%"}
+library(zoo)
 NDVI1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB_ndvi/bb1_ndvi.csv')
-NDVI1$Site <- 'BB1'
+NDVI1$Site <- 'CA-DBB'
 ind <- which(NDVI1$system.time_start == '13-Jul-20')
 NDVI1$NDVI[ind] <- NA
 NDVI2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB_ndvi/bb2_ndvi.csv')  
-NDVI2$Site <- 'BB2'
+NDVI2$Site <- 'CA-DB2'
 NDVI <- full_join(NDVI1, NDVI2)
 NDVI$DATE <- dmy(NDVI$system.time_start)
 
 NDVI$jday <- yday(NDVI$DATE)
 NDVI <- NDVI %>%
-  select(c(jday, Site, NDVI, DATE))
+  dplyr::select(c(jday, Site, NDVI, DATE))
 
 
-NDVI.p <- ggplot(NDVI, aes(DATE, NDVI)) + 
+(NDVI.p <- ggplot(NDVI, aes(DATE, NDVI)) + 
   geom_line(aes (color = Site)) +
     scale_x_date(date_breaks = "2 weeks") +
-   scale_color_aaas()+
+   scale_color_jco()+
   theme_bw()+ 
-    theme(axis.text.x = element_text(angle = 90))
+    theme(axis.text.x = element_text(angle = 90)))
 
-BB1.NDVI <- NDVI %>% filter(Site == "BB1") %>% select(DATE, NDVI, Site)
-ApproxFun <- approxfun(x = BB1.NDVI$DATE, y = BB1.NDVI$NDVI)
+CADBB.NDVI <- NDVI %>% filter(Site == "CA-DBB") %>% dplyr::select(DATE, NDVI, Site)
+CADBB.NDVI$jday <- yday(CADBB.NDVI$DATE)
+ApproxFun <- approxfun(x = CADBB.NDVI$DATE, y = CADBB.NDVI$NDVI)
 Dates <- seq.Date(ymd("2020-01-01"), ymd("2020-12-31"), by = 1)
-LinearFit <- ApproxFun(Dates)
-BB1 <- as.numeric(LinearFit)
-BB1.linear <- as.data.frame(BB1)
+#Dates <- seq(1, 366, by = 1)
 
-SplineFun <- splinefun(x = BB1.NDVI$DATE, y = BB1.NDVI$NDVI)
+LinearFit <- ApproxFun(Dates)
+CADBB <- as.numeric(LinearFit)
+CADBB.linear <- as.data.frame(CADBB)
+CADBB.linear$Site <- "CA-DBB"
+CADBB.linear$jday <- c(1:366)
+names(CADBB.linear)[1] <- "LinearFit"
+
+SplineFun <- splinefun(x = CADBB.NDVI$DATE, y = CADBB.NDVI$NDVI, method = "natural")
 SplineFit <- SplineFun(Dates)
 #summary(SplineFit) #Use spline fit I think to gapfill
-BB1 <- as.numeric(SplineFit)
-BB1.spline <- as.data.frame(BB1)     # use spline because it does the whole year                
-BB1.spline$Site <- "BB1"
-BB1.spline$jday <- c(1:366)
-names(BB1.spline)[1] <- "SplineFit"
+CADBB <- as.numeric(SplineFit)
+CADBB.spline <- as.data.frame(CADBB)     # use spline because it does the whole year                
+CADBB.spline$Site <- "CA-DBB"
+CADBB.spline$jday <- c(1:366)
+names(CADBB.spline)[1] <- "SplineFit"
 
-plot(BB1.NDVI$DATE, y = BB1.NDVI$NDVI, ylim = c(0.3, 0.8))
+plot(CADBB.NDVI$DATE, y = CADBB.NDVI$NDVI, ylim = c(0.3, 0.8))
 lines(Dates, SplineFit, col = "red")
 lines(Dates, LinearFit, col = "blue")   
 
-BB2.NDVI <- NDVI %>% filter(Site == "BB2") %>% select(DATE, NDVI, Site)
-ApproxFun <- approxfun(x = BB2.NDVI$DATE, y = BB2.NDVI$NDVI)
-Dates <- seq.Date(ymd("2020-01-01"), ymd("2020-12-31"), by = 1)
+CADB2.NDVI <- NDVI %>% filter(Site == "CA-DB2") %>% dplyr::select(DATE, NDVI, Site)
+CADB2.NDVI$jday <- yday(CADB2.NDVI$DATE)
+
+ApproxFun <- approxfun(x = CADB2.NDVI$DATE, y = CADB2.NDVI$NDVI)
+#Dates <- seq.Date(ymd("2020-01-01"), ymd("2020-12-31"), by = 1)
 LinearFit <- ApproxFun(Dates)
-BB2 <- as.numeric(LinearFit)
-BB2.linear <- as.data.frame(BB2)
+CADB2 <- as.numeric(LinearFit)
+CADB2.linear <- as.data.frame(CADB2)
+CADB2.linear$Site <- "CA-DB2"
+CADB2.linear$jday <- c(1:366)
+names(CADB2.linear)[1] <- "LinearFit"
 
-SplineFun <- splinefun(x = BB2.NDVI$DATE, y = BB2.NDVI$NDVI)
+SplineFun <- splinefun(x = CADB2.NDVI$DATE, y = CADB2.NDVI$NDVI, method = "natural")
 SplineFit <- SplineFun(Dates)
-BB2 <- as.numeric(SplineFit)
-BB2.spline <-as.data.frame(SplineFit)
-BB2.spline$Site <- "BB2"
-BB2.spline$jday <- c(1:366)
+CADB2 <- as.numeric(SplineFit)
+CADB2.spline <-as.data.frame(SplineFit)
+CADB2.spline$Site <- "CA-DB2"
+CADB2.spline$jday <- c(1:366)
 
-plot(BB2.NDVI$DATE, y = BB2.NDVI$NDVI, ylim = c(0.3, 0.8))
+plot(CADB2.NDVI$DATE, y = CADB2.NDVI$NDVI, ylim = c(0.3, 0.8))
 lines(Dates, SplineFit, col = "red")
 lines(Dates, LinearFit, col = "blue") 
 
-NDVI.new <- full_join(BB1.spline, BB2.spline)
-names(NDVI.new)[1] <- "NDVI_sf"
+NDVI.new <- full_join(CADBB.linear, CADB2.linear)
+names(NDVI.new)[1] <- "NDVI_lf"
 
-Env.input_data <- left_join(Env.input_data, NDVI.new)
+Env.input_data <- full_join(Env.input_data, NDVI.new)
 ```
 
-```{r}
-(NDVI.p <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NDVI_sf)) + 
+```{r NDVI}
+ind.GS <- (NDVI.new$jday >= 92 & NDVI.new$jday <= 274)
+ind.NGS <- (NDVI.new$jday < 92 | NDVI.new$jday >=275)
+
+NDVI.new$Period <- " "
+NDVI.new$Period[ind.GS] <- "GS"
+NDVI.new$Period[ind.NGS] <- "NGS"
+
+NDVI.GS <- NDVI.new %>% filter(Period == "GS")
+NDVI.NGS <- NDVI.new %>% filter(Period == "NGS")
+
+
+(NDVI.p <- ggplot(NDVI.new, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NDVI_lf)) + 
  geom_line(aes(colour = Site)) +
   ylab("NDVI")+
   xlab("Month") +
+   ggtitle("b") +
     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-  ggtitle("") +
-   scale_color_aaas()+
-  theme_bw())
+   scale_color_jco()+
+  theme_bw()+
+  theme(axis.text = element_text(size=14),
+        axis.title = element_text(size=15),
+        legend.text = element_text(size =13),
+      legend.title = element_text(size = 13),
+       legend.position=c(0.15, 0.86),
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank()))
+
+NDVI.sum <- NDVI.new %>% group_by(Site, Period) %>%
+  summarise(mean(NDVI_lf, na.rm = TRUE))
+
+kruskal.test(NDVI_lf~Site, data = NDVI.new)
+
+aov.NDVI <- aov(NDVI_lf~Site*Period, data = NDVI.new)
+summary(aov.NDVI)
+TukeyHSD(aov.NDVI)
+
+##playing around to predict NDVI from GPP
+
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/NDVI.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+(ParNDVI <- ggarrange(NDVI.p,Parin.p, nrow = 2, common.legend = TRUE,align = "v", heights = c(1, 1.2)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/PARNDVI.tiff", width = 10, height = 7, device='tiff', dpi=330)
+
 ```
 
 
@@ -387,24 +645,39 @@ EC.temp.avg$month <-month.abb[EC.temp.avg$month]
 
 Temp.avg <- Env.input_data %>% select(Site, jday, Ta_mean, month) %>%
   full_join(EC.temp.avg)
+Temp.avg$Site <- revalue(Temp.avg$Site, c("EC"="ECCC", "CADBB" = "CA-DBB", "CADB2" = "CA-DB2")) #rename factors
 
-Ta.p <- ggplot(Temp.avg, aes(jday, Ta_mean)) + 
+ind.GS <- (Temp.avg$jday >= 92 & Temp.avg$jday <= 274)
+ind.NGS <- (Temp.avg$jday < 92 | Temp.avg$jday >=275)
+
+Temp.avg$Period <- ''
+Temp.avg$Period[ind.GS] <- 'GS'
+Temp.avg$Period[ind.NGS] <- 'NGS'
+
+Temp.avg %>% filter(Site =="ECCC" & Period =="NGS") %>%
+  summarise(mean(Ta_mean))
+
+
+(Ta.p <- ggplot(Temp.avg, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Ta_mean)) + 
  geom_line(aes(colour = Site)) +
-  ylab("Air temperature (deg C)")+
-  xlab("Julian DOY") +
-  ggtitle("Air temperature for BB1, BB1 and the 10 year average from EC") +
-   scale_color_aaas()+
-  theme_bw()
-ggplotly(Ta.p)
+  ylab("Air temperature (°C)")+
+  xlab("Month") +
+  ggtitle("a") +
+   scale_color_jco()+
+         scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  theme_bw()+
+theme(legend.key.size = unit(1.5,"line"),
+      axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      #axis.text.x = element_blank(),
+      axis.title.x = element_blank(),
+     # legend.justification=c(1.25, -2),
+      legend.position=c(0.18, 0.77),
+      legend.text = element_text(size =13),
+      legend.title = element_text(size = 13))) 
 
-#TA.avg.p <- Temp.avg %>% ddply (c("month", "Site"), summarise,
- #                               MeanTemp = mean(Ta_mean)) %>%
-#ggplot(., aes(month, MeanTemp, fill = Site))+
- # geom_col(position = 'dodge')+  
-  #scale_x_discrete(limits = month.abb) +
-   # scale_fill_aaas()+
-  #theme_bw()
-#ggplotly(TA.avg.p)
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/TAECCC.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
 
 EC.Precip.avg <- EC.avg %>% dplyr::select(jday, Month, Precip) %>%
   ddply(c("jday", "Month"), summarise,
@@ -417,31 +690,331 @@ names(EC.Precip.avg)[4] <- "Cumsum"
 EC.Precip.avg$Site <- "EC"
 EC.Precip.avg$month <-month.abb[EC.Precip.avg$month]
 
-Precip.avg <- Precip.2 %>% select(Site, jday, Cumsum, Precip_mean, month) %>%
-  full_join(EC.Precip.avg)
+ind.GS <- (EC.Precip.avg$jday >= 92 & EC.Precip.avg$jday <= 274)
+ind.NGS <- (EC.Precip.avg$jday < 92 | EC.Precip.avg$jday >=275)
 
-Precip.p <- ggplot(Precip.avg, aes(month, Cumsum, fill = Site)) + 
+EC.Precip.avg$Period <- ''
+EC.Precip.avg$Period[ind.GS] <- 'GS'
+EC.Precip.avg$Period[ind.NGS] <- 'NGS'
+
+
+Precip.avg <- Precip.2 %>% select(Site, jday, Cumsum, Precip_mean, month, Period) %>%
+  full_join(EC.Precip.avg)
+Precip.avg$Site <- revalue(Precip.avg$Site, c("EC" = "ECCC")) #rename factors
+Precip.avg <- Precip.avg %>% filter(Site == "CA-DB2" | Site == "ECCC") #Select only BB2 and ECCC
+Precip.avg %>% group_by(Site, Period) %>% summarise(sum(Precip_mean)) 
+
+
+(Precip.p <- 
+  ggplot(Precip.avg, aes(month, Cumsum, fill = Site)) + 
+  geom_col(position = 'dodge') +
+   scale_x_discrete(limits = month.abb) +
+  ylab("Precipitaion (mm)")+
+    xlab("Month")+
+    ggtitle("b")+
+   #scale_fill_jco()+
+    scale_fill_manual(values = c("CA-DB2" = "#0073C2FF", "ECCC"= "#868686FF"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size=15),
+       # axis.text.x = element_blank(),
+      #axis.title.x = element_blank(),
+      legend.position = "none"))
+
+aov.2 <- aov(Cumsum~Site*month, data = Precip.avg)
+summary(aov.2)
+TukeyHSD(aov.2)
+
+
+Temp.avg.month <- Temp.avg %>% select(month, Ta_mean, Site) %>%
+  ddply(c("Site", "month"), summarise,
+       Temp_mean = mean(Ta_mean, na.rm = TRUE),
+       sd = sd(Ta_mean, na.rm = TRUE))
+
+
+ind.GS <- (Temp.avg.month$month == "Apr" |Temp.avg.month$month == "May"|Temp.avg.month$month == "Jun"|Temp.avg.month$month == "Jul"|Temp.avg.month$month == "Aug"|Temp.avg.month$month == "Sep")
+ind.NGS <- (Temp.avg.month$jday < 92 | Temp.avg.month$jday >=275)
+
+Temp.avg.month$Period <- ''
+Temp.avg.month$Period[ind.GS] <- 'GS'
+Precip.3$Period[ind.NGS.P] <- 'NGS'
+
+
+(Temp.all.p <-
+  ggplot(Temp.avg.month, aes(month, Temp_mean, fill = Site)) + 
+  geom_bar(stat = "identity", position = 'dodge') +
+    geom_errorbar(aes(x=month, ymin=Temp_mean-sd, ymax=Temp_mean+sd), position = "dodge")+
+   scale_x_discrete(limits = month.abb) +
+  #ylab("Precipitaion (mm)")+
+   # xlab("Month")+
+    #ggtitle("b")+
+   #scale_fill_jco()+
+    scale_fill_manual(values = c("CA-DB2" = "#0073C2FF", "ECCC"= "#868686FF", "CA-DBB" = "#EFC000FF"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 14),
+        axis.title = element_text(size=15)))
+       # axis.text.x = element_blank(),
+      #axis.title.x = element_blank(),
+      #legend.position = "none"))
+
+#aov.1 <- aov(Temp_mean~Site*month, data = Temp.avg.all)
+#summary(aov.1)
+#options(max.print = 10000)
+#TukeyHSD(aov.1)
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/precipECCC.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+(TAandPrecip <- ggarrange(Ta.p, Precip.p, nrow = 2, common.legend = TRUE, align = "v", heights=c(1, 1.2)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/precipTA.jpeg", width = 10, height = 7, device='jpeg', dpi=330)
+
+```
+
+```{r FIGURE: combining env data plots}
+library(gridExtra)
+library(cowplot)
+
+#To create shared legend:
+# Create plot with legend
+legend <- ggplot(Precip.avg, aes(month, Cumsum, fill = Site)) + 
   geom_col(position = 'dodge') +
    scale_x_discrete(limits = month.abb) +
   ylab("Precipitaion (mm)")+
    scale_fill_aaas()+
-  theme_bw()
-ggplotly(Precip.p)
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 10),
+  legend.text = element_text(size = 8),
+  legend.key.width  =  unit(1, "lines"))+
+  scale_size_area(max_size = 3)
+
+# Create user-defined function, which extracts legends from ggplots
+extract_legend <- function(my_legend) {
+  step1 <- ggplot_gtable(ggplot_build(my_legend))
+  step2 <- which(sapply(step1$grobs, function(x) x$name) == "guide-box")
+  step3 <- step1$grobs[[step2]]
+  return(step3)
+}
+
+# Apply user-defined function to extract legend
+shared_legend <- extract_legend(legend)
+
+grid.arrange(Ta.p, Precip.p, RH.p, TS.5.p, WTH.p,shared_legend, nrow = 3, ncol = 2)
+
+grid.arrange(Ta.p, Precip.p, shared_legend, nrow = 3)
+
+
+library(grid)
+#To combine and save plots (run all together): 
+jpeg(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/TaTs.jpeg", width =880, height = 300) # The height of the plot in inches
+grid.draw(cbind(ggplotGrob(Ta.p), ggplotGrob(TS.5.p)))
+dev.off()
+
+jpeg(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/ParinNDVI.tiff", width =880, height = 300) # The height of the plot in inches
+grid.draw(cbind(ggplotGrob(Parin.p), ggplotGrob(NDVI.p)))
+dev.off()
+
+jpeg(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/PrecipWTH.jpeg", width =880, height = 300) # The height of the plot in inches
+grid.draw(cbind(ggplotGrob(Precip.p), ggplotGrob(WTH.p)))
+dev.off()
+
 ```
 
 ### CO2 and CH4 balance
 
+
+
+Fulldata <- Fulldata %>%
+  mutate(CH4_gC = (ch4gC + 0.03),
+         CH4_mgC = (ch4mgC + 26)) %>%
+  mutate(logCH4_gC = log(CH4_gC),
+         logCH4_mgC = log(CH4_mgC))
 
 ```{r read in daily mean CO2 and CH4 fluxes}
 setwd(wd)
 
 # This file has daily averaged gap filled data
 Flux.input_file <- "data/flux.csv" 
-Flux.input_data <- read.csv(Flux.input_file)
+Flux.input_data <- read.csv(Flux.input_file) 
 
-Flux.ind.GS <- Flux.input_data[(Flux.input_data$jday >= 92 & Flux.input_data$jday <= 274), ] 
-Flux.ind.NGS <-Flux.input_data[(Flux.input_data$jday < 92 | Flux.input_data$jday >=275), ] 
+Flux.ind.GS <- (Flux.input_data$jday >= 92 & Flux.input_data$jday <= 274) 
+Flux.ind.NGS <-(Flux.input_data$jday < 92 | Flux.input_data$jday >=275)
+
+Flux.input_data$Period <- " "
+Flux.input_data$Period[Flux.ind.GS] <- "GS"
+Flux.input_data$Period[Flux.ind.NGS] <- "NGS"
+
+Flux.input_data$Site <- revalue(Flux.input_data$Site, c("BB1"="CA-DBB", "BB2"="CA-DB2")) #rename factors
+
 ```
+
+```{r calculate uncertainty}
+molarMass <- 12.011
+##BB2
+BB2unc <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/FilledEddyData.csv') %>% dplyr::select(DateTime, NEE_U05_f, NEE_U95_f, GPP_U05_f, GPP_U95_f, Reco_U05, Reco_U95)
+BB2unc$DateTime <- as.POSIXct(BB2unc$DateTime, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+BB2unc <- BB2unc %>% filter (DateTime >= "2020-01-01 00:00:00"  & DateTime < "2021-01-01 00:00:00")
+BB2unc$jday <- yday(BB2unc$DateTime)
+BB2unc$Period <- ""
+ind.GS <- (BB2unc$jday >= 92 & BB2unc$jday <= 274)
+ind.NGS <- (BB2unc$jday < 92 | BB2unc$jday >=275)
+BB2unc$Period[ind.GS] <- 'GS'
+BB2unc$Period[ind.NGS] <- 'NGS'
+
+#NEE
+L.2 <-mean(BB2unc$NEE_U05_f) * 1e-6 * molarMass * (3600*24*365.25)
+U.2 <- mean(BB2unc$NEE_U95_f) * 1e-6 *  molarMass * (3600*24*365.25)
+
+std.2 <- (U.2 - L.2)/(2*1.645)
+CI95.2 <- std.2 *1.96
+
+CI95.2 * (44.01/12.01)
+
+#GPP
+L.2.GPP <-mean(BB2unc$GPP_U05_f) * 1e-6 * molarMass * (3600*24*365.25)
+U.2.GPP <- mean(BB2unc$GPP_U95_f) * 1e-6 *  molarMass * (3600*24*365.25)
+
+std.2.GPP <- (U.2.GPP - L.2.GPP)/(2*1.645)
+CI95.2.GPP <- std.2.GPP *1.96
+
+#RECO
+L.2.RECO <-mean(BB2unc$Reco_U05) * 1e-6 * molarMass * (3600*24*365.25)
+U.2.RECO <- mean(BB2unc$Reco_U95) * 1e-6 *  molarMass * (3600*24*365.25)
+
+std.2.RECO <- (U.2.RECO - L.2.RECO)/(2*1.645)
+CI95.2.RECO<- std.2.RECO *1.96
+
+#BB2 GS
+BB2unc.GS <- BB2unc %>% filter (Period == "GS")
+
+#NEE
+L.2.GS <-mean(BB2unc.GS$NEE_U05_f) * 1e-6 * molarMass * (3600*24*182)
+U.2.GS <- mean(BB2unc.GS$NEE_U95_f) * 1e-6 *  molarMass * (3600*24*182)
+
+std.2.GS <- (U.2.GS - L.2.GS)/(2*1.645)
+CI95.2.GS <- std.2.GS *1.96
+
+#GPP
+L.2.GPP.GS <-mean(BB2unc.GS$GPP_U05_f) * 1e-6 * molarMass * (3600*24*182)
+U.2.GPP.GS <- mean(BB2unc.GS$GPP_U95_f) * 1e-6 *  molarMass * (3600*24*182)
+
+std.2.GPP.GS <- (U.2.GPP.GS - L.2.GPP.GS)/(2*1.645)
+CI95.2.GPP.GS <- std.2.GPP.GS *1.96
+
+#RECO
+L.2.RECO.GS <-mean(BB2unc.GS$Reco_U05) * 1e-6 * molarMass * (3600*24*182)
+U.2.RECO.GS <- mean(BB2unc.GS$Reco_U95) * 1e-6 *  molarMass * (3600*24*182)
+
+std.2.RECO.GS<- (U.2.RECO.GS - L.2.RECO.GS)/(2*1.645)
+CI95.2.RECO.GS <- std.2.RECO.GS *1.96
+
+
+#BB2 NGS
+BB2unc.NGS <- BB2unc %>% filter (Period == "NGS")
+
+#NEE
+L.2.NGS <-mean(BB2unc.NGS$NEE_U05_f) * 1e-6 * molarMass * (3600*24*184)
+U.2.NGS <- mean(BB2unc.NGS$NEE_U95_f) * 1e-6 *  molarMass * (3600*24*184)
+
+std.2.NGS <- (U.2.NGS - L.2.NGS)/(2*1.645)
+CI95.2.NGS <- std.2.NGS *1.96
+
+#GPP
+L.2.GPP.NGS <-mean(BB2unc.NGS$GPP_U05_f) * 1e-6 * molarMass * (3600*24*184)
+U.2.GPP.NGS <- mean(BB2unc.NGS$GPP_U95_f) * 1e-6 *  molarMass * (3600*24*184)
+
+std.2.GPP.NGS <- (L.2.GPP.NGS - U.2.GPP.NGS)/(2*1.645)
+CI95.2.GPP.NGS <- std.2.GPP.NGS *1.96
+
+#RECO
+L.2.RECO.NGS <-mean(BB2unc.NGS$Reco_U05) * 1e-6 * molarMass * (3600*24*184)
+U.2.RECO.NGS <- mean(BB2unc.NGS$Reco_U95) * 1e-6 *  molarMass * (3600*24*184)
+
+std.2.RECO.NGS<- (U.2.RECO.NGS - L.2.RECO.NGS)/(2*1.645)
+CI95.2.RECO.NGS <- std.2.RECO.NGS *1.96
+
+BB1unc <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/FilledEddyData.csv') %>% dplyr::select(DateTime, NEE_U05_f, NEE_U95_f, GPP_U05_f, GPP_U95_f, Reco_U05, Reco_U95)
+BB1unc$DATE <- as.POSIXct(BB1unc$DateTime, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+BB1unc <- BB1unc %>% filter (DATE >= "2020-01-01 00:00:00"  & DATE < "2021-01-01 00:00:00")
+BB1unc$jday <- yday(BB1unc$DateTime)
+BB1unc$Period <- ""
+ind.GS <- (BB1unc$jday >= 92 & BB1unc$jday <= 274)
+ind.NGS <- (BB1unc$jday < 92 | BB1unc$jday >=275)
+BB1unc$Period[ind.GS] <- 'GS'
+BB1unc$Period[ind.NGS] <- 'NGS'
+
+L.1 <-mean(BB1unc$NEE_U05_f) * 1e-6 * molarMass * (3600*24*365.25)
+U.1 <- mean(BB1unc$NEE_U95_f) * 1e-6 *  molarMass * (3600*24*365.25)
+
+std.1 <- (U.1 - L.1)/(2*1.645)
+CI95.1 <- std.1 *1.96
+
+CI95.1 * (44.01/12.01)
+
+#GPP
+L.1.GPP <-mean(BB1unc$GPP_U05_f) * 1e-6 * molarMass * (3600*24*365.25)
+U.1.GPP <- mean(BB1unc$GPP_U95_f) * 1e-6 *  molarMass * (3600*24*365.25)
+
+std.1.GPP <- (U.1.GPP - L.1.GPP)/(2*1.645)
+CI95.1.GPP <- std.1.GPP *1.96
+
+#RECO
+L.1.RECO <-mean(BB1unc$Reco_U05) * 1e-6 * molarMass * (3600*24*365.25)
+U.1.RECO <- mean(BB1unc$Reco_U95) * 1e-6 *  molarMass * (3600*24*365.25)
+
+std.1.RECO <- (U.1.RECO - L.1.RECO)/(2*1.645)
+CI95.1.RECO<- std.1.RECO *1.96
+
+#BB1 GS
+BB1unc.GS <- BB1unc %>% filter (Period == "GS")
+
+#NEE
+L.1.GS <-mean(BB1unc.GS$NEE_U05_f) * 1e-6 * molarMass * (3600*24*182)
+U.1.GS <- mean(BB1unc.GS$NEE_U95_f) * 1e-6 *  molarMass * (3600*24*182)
+
+std.1.GS <- (U.1.GS - L.1.GS)/(2*1.645)
+CI95.1.GS <- std.1.GS *1.96
+
+#GPP
+L.1.GPP.GS <-mean(BB1unc.GS$GPP_U05_f) * 1e-6 * molarMass * (3600*24*182)
+U.1.GPP.GS <- mean(BB1unc.GS$GPP_U95_f) * 1e-6 *  molarMass * (3600*24*182)
+
+std.1.GPP.GS <- (U.1.GPP.GS - L.1.GPP.GS)/(2*1.645)
+CI95.1.GPP.GS <- std.1.GPP.GS *1.96
+
+#RECO
+L.1.RECO.GS <-mean(BB1unc.GS$Reco_U05) * 1e-6 * molarMass * (3600*24*182)
+U.1.RECO.GS <- mean(BB1unc.GS$Reco_U95) * 1e-6 *  molarMass * (3600*24*182)
+
+std.1.RECO.GS<- (U.1.RECO.GS - L.1.RECO.GS)/(2*1.645)
+CI95.1.RECO.GS <- std.1.RECO.GS *1.96
+
+#BB1 NGS
+BB1unc.NGS <- BB1unc %>% filter (Period == "NGS")
+
+#NEE
+L.1.NGS <-mean(BB1unc.NGS$NEE_U05_f) * 1e-6 * molarMass * (3600*24*184)
+U.1.NGS <- mean(BB1unc.NGS$NEE_U95_f) * 1e-6 *  molarMass * (3600*24*184)
+
+std.1.NGS <- (U.1.NGS - L.1.NGS)/(2*1.645)
+CI95.1.NGS <- std.1.NGS *1.96
+
+#GPP
+L.1.GPP.NGS <-mean(BB1unc.NGS$GPP_U05_f) * 1e-6 * molarMass * (3600*24*184)
+U.1.GPP.NGS <- mean(BB1unc.NGS$GPP_U95_f) * 1e-6 *  molarMass * (3600*24*184)
+
+std.1.GPP.NGS <- (U.1.GPP.NGS - L.1.GPP.NGS)/(2*1.645)
+CI95.1.GPP.NGS <- std.1.GPP.NGS *1.96
+
+#RECO
+L.1.RECO.NGS <-mean(BB1unc.NGS$Reco_U05) * 1e-6 * molarMass * (3600*24*184)
+U.1.RECO.NGS <- mean(BB1unc.NGS$Reco_U95) * 1e-6 *  molarMass * (3600*24*184)
+
+std.1.RECO.NGS<- (U.1.RECO.NGS - L.1.RECO.NGS)/(2*1.645)
+CI95.1.RECO.NGS <- std.1.RECO.NGS *1.96
+
+```
+
 
 __Cumulative NEE__
 
@@ -456,35 +1029,78 @@ By the end of 2020, BB1 was a CO2 sink, but BB2 was a source of CO2 to the atmos
 (NEEcum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NEEcum, color = Site)) +
   geom_line(aes(color = Site))+
-  ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('Cumulative NEE (g C' ~m^-2~')'))+
   xlab("Month")+
     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-   scale_color_aaas()+
-  theme_bw())
+   scale_color_jco()+
+   ggtitle("a")+
+  theme_bw()+
+   theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+      legend.text = element_text(size = 13),
+      legend.title = element_text(size = 13),
+      legend.key.size = unit(1.5, "line")))#,
+      #legend.justification=c(1.25, -1.8),
+                        #legend.position=c(.9, 0.2)))
 
-#To make a table showing final values:
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/NEEcum.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+
 Flux.input_data %>%
   dplyr::select(c(Site, NEEcum, jday)) %>%
   group_by(Site) %>%
   mutate(row = row_number()) %>%
-  pivot_wider(names_from = Site, values_from = NEEcum) %>%
-  summarise(BB1 = last(na.omit(BB1)),
-            BB2 = last(na.omit(BB2))) %>%
-  kbl(caption = "Total NEE") %>%
-  kable_classic(html_font = "Cambria")
+  pivot_wider(names_from = Site, values_from = NEEcum)
 
 kruskal.test(NEEcum ~ Site, data = Flux.input_data)
 
 (NEE.time.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NEEgC_f, color = Site)) +
   geom_line(aes(color = Site))+
-  ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
   xlab("Month")+
     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-   scale_color_aaas()+
-  theme_bw())
+   scale_color_jco()+
+    ggtitle("b")+
+  theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      legend.position = "none"))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/NEEtime.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+
+Flux.input_data %>% group_by(Site, Period) %>%
+  summarise(sum(NEEgC_f))
+
+GS.Flux.input_data <- Flux.input_data %>% filter(Period == "GS")
+t.test(NEEcum ~ Site, data = GS.Flux.input_data)
+
+GS.Flux.input_data<- GS.Flux.input_data %>% group_by(Site) %>% mutate(cum.NEE2 = cumsum(NEEgC_f))
+
+NGS.Flux.input_data <- Flux.input_data %>% filter(Period == "NGS")
+kruskal.test(NEEcum ~ Site, data = GS.Flux.input_data)
+kruskal.test(NEEgC_f ~ Site, NGS.Flux.input_data)
+
+
+NGS.Flux.input_data<- NGS.Flux.input_data %>% group_by(Site) %>% mutate(cum.NEE2 = cumsum(NEEgC_f))
+
+GS.Flux.input_data %>% filter(Site =="CA-DBB") %>% summarise(mean(NEE_f))
+GS.Flux.input_data %>% filter(Site =="CA-DB2") %>% summarise(mean(NEE_f))
+
+NGS.Flux.input_data %>% filter(Site =="CA-DBB") %>% summarise(mean(NEE_f))
+NGS.Flux.input_data %>% filter(Site =="CA-DB2") %>% summarise(mean(NEE_f))
+
+NEE.arranged <- ggarrange(NEEcum.p, NEE.time.p, nrow = 2, common.legend = TRUE, align = "v", heights=c(1, 1.2))
+NEE.arranged
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/NEEarranged.tiff", width = 9, height = 7, device='tiff', dpi=330)
 
 ```
+
+
 
 __Cumulative GPP__
 
@@ -492,12 +1108,23 @@ __Cumulative GPP__
 (GPPcum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), GPPcum_f, color = Site)) +
   geom_line()+
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  ylab(bquote('Cumulative GPP (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('Cumulative GPP (g C' ~m^-2~')'))+
   xlab("Month")+
+   ggtitle("a") +
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-    scale_color_aaas()+
-  theme_bw())
+    scale_color_jco()+
+  theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+      legend.key.size = unit(1.5, "line"),
+      legend.text = element_text(size = 13),
+      legend.title = element_text(size = 13),
+                        legend.position=c(.15, 0.8)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/GPPcum.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
 
 Flux.input_data %>%
   dplyr::select(c(Site, GPPcum_f, jday)) %>%
@@ -512,15 +1139,41 @@ Flux.input_data %>%
 kruskal.test(GPPcum_f ~ Site, data = Flux.input_data)
 
 (GPP.p <-Flux.input_data %>% 
-  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), GPP_f, color = Site)) +
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), GPPgC_f, color = Site)) +
   geom_line()+
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
   ylab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
-  xlab("Julian dat of year")+
+  xlab("Month")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-    scale_color_aaas()+
-  theme_bw())
+    scale_color_jco()+
+    ggtitle("b")+
+  theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      legend.position = "none"))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/GPPtime.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+GPP.arranged <- ggarrange(GPPcum.p, GPP.p, nrow = 2, common.legend = TRUE, align = "v", heights=c(1, 1.2))
+GPP.arranged
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/GPParranged.tiff", width = 9, height = 7, device='tiff', dpi=330)
+
+Flux.input_data %>% group_by(Site, Period) %>%
+  summarise(sum(GPPgC_f))
+
+kruskal.test(GPPcum_f ~ Site, data = GS.Flux.input_data)
+kruskal.test(GPPcum_f ~ Site, data = NGS.Flux.input_data)
+
+cumsumGPP <- Flux.input_data %>%
+  dplyr::select(c(Site, GPPgC_f, jday, month_local)) %>%
+  group_by(Site, month_local) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = GPPgC_f)
+
+new <- cumsumGPP %>% group_by(month_local) %>%
+  summarise(GPPcum = cumsum(`CA-DB2`))
 ```
+
 
 __Ecosystem respiration__
 
@@ -530,13 +1183,22 @@ __Ecosystem respiration__
 (Recocum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Recocum, color = Site)) +
   geom_line()+
-    #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  ylab(bquote('Cumulative ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('Cumulative RECO (g C' ~m^-2~')'))+
   xlab("Month")+
  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-    scale_color_aaas()+
- theme_bw())#+
-  #theme(legend.position = "none")
+    scale_color_jco()+
+   ggtitle("a")+
+ theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+      legend.key.size = unit(1.5, "line"),
+      legend.text = element_text(size = 13),
+      legend.title = element_text(size = 13),
+      legend.position=c(.15, 0.8)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/Recocum.tiff", width = 7, height = 4, device='tiff', dpi=300)
 
 Flux.input_data %>%
   dplyr::select(c(Site, Recocum, jday)) %>%
@@ -551,51 +1213,240 @@ Flux.input_data %>%
 kruskal.test(Recocum ~ Site, data = Flux.input_data)
 
 (Reco.p <-Flux.input_data %>% 
-  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Reco, color = Site)) +
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), RecogC, color = Site)) +
   geom_line()+
     #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
   xlab("Month")+
  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-    scale_color_aaas()+
- theme_bw())
+    scale_color_jco()+
+    ggtitle("b")+
+ theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      legend.position = "none"))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/Recotime.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+RECO.arranged <- ggarrange(Recocum.p, Reco.p, nrow = 2, common.legend = TRUE, align = "v", heights=c(1, 1.2))
+RECO.arranged
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/Recoarranged.tiff", width = 9, height = 7, device='tiff', dpi=330)
+
+Flux.input_data %>% group_by(Site, Period) %>%
+  summarise(sum(RecogC))
+
+BB2.flux <- Flux.input_data %>% select(Site, RecogC, Period, jday) %>% filter(Site =="BB2")
+BB1.flux <- Flux.input_data %>% select(Site, RecogC, Period, jday) %>% filter(Site =="BB1")
+
+kruskal.test(Recocum ~ Site, data = GS.Flux.input_data)
+kruskal.test(Recocum ~ Site, data = NGS.Flux.input_data)
+
 ```
 
 
 __CH4 flux__
 
-CH4 flux is higher at BB1 than BB2, but how does this affect the annual GHG budget? 
-- Nick calc CH4 budget 2016-2017 to be ~17 g CH4 - C, whereas in 2020 it was around 12 g CH4 - C.
+```{r calculate FCH4 UC}
+#BB1
+FCH4.UC.BB1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_rf_result.csv') %>% dplyr:: select (FCH4_RF_filled, DateTime, iteration) %>%
+  pivot_wider(names_from = iteration, values_from = FCH4_RF_filled) 
+
+nmolsto30 <- function(x) x*1800 
+FCH4.UC.BB1.30 <- data.frame(lapply(FCH4.UC.BB1[2:21], nmolsto30))  
+nmoltog <- function(x)  x * (12.01/(10^6))
+FCH4.UC.BB1.g <- data.frame(lapply(FCH4.UC.BB1.30, nmoltog)) 
+cumsum.F <- function(x) cumsum(x)
+FCH4.UC.cumBB1 <- data.frame(lapply(FCH4.UC.BB1.30, cumsum.F)) %>% tail(n = 1)
+FCH4.UC.cumBB1 <- data.frame(lapply(FCH4.UC.cumBB1, nmoltog))
+FCH4.UC.cum.95BB1 <-1.96*(sd(FCH4.UC.cumBB1))
+
+SGWPCH4.20 * (FCH4.UC.cum.95BB1 * (16.04/12.01))
+SGWPCH4.100 * (FCH4.UC.cum.95BB1 * (16.04/12.01))
+
+
+FCH4.UC.BB1$jday <-yday(FCH4.UC.BB1$DateTime)
+FCH4.UC.BB1$Period <- ""
+ind.GS <- (FCH4.UC.BB1$jday >= 92 & FCH4.UC.BB1$jday <= 274)
+ind.NGS <- (FCH4.UC.BB1$jday < 92 | FCH4.UC.BB1$jday >=275)
+FCH4.UC.BB1$Period[ind.GS] <- 'GS'
+FCH4.UC.BB1$Period[ind.NGS] <- 'NGS'
+FCH4.UC.BB1.GS <- FCH4.UC.BB1 %>% filter(Period == "GS")
+FCH4.UC.BB1.NGS <- FCH4.UC.BB1 %>% filter(Period == "NGS")
+
+FCH4.UC.BB1.30.GS <- data.frame(lapply(FCH4.UC.BB1.GS[2:21], nmolsto30))  
+FCH4.UC.BB1.g.GS <- data.frame(lapply(FCH4.UC.BB1.30.GS, nmoltog)) 
+FCH4.UC.cumBB1.GS <- data.frame(lapply(FCH4.UC.BB1.30.GS, cumsum.F)) %>% tail(n = 1)
+FCH4.UC.cumBB1.GS <- data.frame(lapply(FCH4.UC.cumBB1.GS, nmoltog))
+FCH4.UC.cum.95BB1.GS <-1.96*(sd(FCH4.UC.cumBB1.GS))
+
+FCH4.UC.BB1.30.NGS <- data.frame(lapply(FCH4.UC.BB1.NGS[2:21], nmolsto30))  
+FCH4.UC.BB1.g.NGS <- data.frame(lapply(FCH4.UC.BB1.30.NGS, nmoltog)) 
+FCH4.UC.cumBB1.NGS <- data.frame(lapply(FCH4.UC.BB1.30.NGS, cumsum.F)) %>% tail(n = 1)
+FCH4.UC.cumBB1.NGS <- data.frame(lapply(FCH4.UC.cumBB1.NGS, nmoltog))
+FCH4.UC.cum.95BB1.NGS <-1.96*(sd(FCH4.UC.cumBB1.NGS))
+
+#BB2
+FCH4.UC.BB2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_rf_result.csv') %>% dplyr:: select (FCH4_RF_filled, DateTime, iteration) %>%
+  pivot_wider(names_from = iteration, values_from = FCH4_RF_filled)  %>%
+  filter(DateTime >= '2020-01-01T00:30:00Z' & DateTime <= '2020-12-31T23:30:00Z') 
+
+nmolsto30 <- function(x) x*1800 
+FCH4.UC.BB2.30 <- data.frame(lapply(FCH4.UC.BB2[2:21], nmolsto30))  
+nmoltog <- function(x)  x * (12.01/(10^6))
+FCH4.UC.BB2.g <- data.frame(lapply(FCH4.UC.BB2.30, nmoltog)) 
+cumsum.F <- function(x) cumsum(x)
+FCH4.UC.cumBB2 <- data.frame(lapply(FCH4.UC.BB2.30, cumsum.F)) %>% tail(n = 1)
+FCH4.UC.cumBB2 <- data.frame(lapply(FCH4.UC.cumBB2, nmoltog))
+FCH4.UC.cum.95BB2 <-1.96*(sd(FCH4.UC.cumBB2))
+
+DB2.CI95.FCH4.20 <- SGWPCH4.20 * (FCH4.UC.cum.95BB2 * (16.04/12.01))
+DB2.CI95.FCH4.100 <- SGWPCH4.100 * (FCH4.UC.cum.95BB2 * (16.04/12.01))
+
+
+
+FCH4.UC.BB2$jday <-yday(FCH4.UC.BB2$DateTime)
+FCH4.UC.BB2$Period <- ""
+ind.GS <- (FCH4.UC.BB2$jday >= 92 & FCH4.UC.BB2$jday <= 274)
+ind.NGS <- (FCH4.UC.BB2$jday < 92 | FCH4.UC.BB2$jday >=275)
+FCH4.UC.BB2$Period[ind.GS] <- 'GS'
+FCH4.UC.BB2$Period[ind.NGS] <- 'NGS'
+FCH4.UC.BB2.GS <- FCH4.UC.BB2 %>% filter(Period == "GS")
+FCH4.UC.BB2.NGS <- FCH4.UC.BB2 %>% filter(Period == "NGS")
+
+FCH4.UC.BB2.30.GS <- data.frame(lapply(FCH4.UC.BB2.GS[2:21], nmolsto30))  
+FCH4.UC.BB2.g.GS <- data.frame(lapply(FCH4.UC.BB2.30.GS, nmoltog)) 
+FCH4.UC.cumBB2.GS <- data.frame(lapply(FCH4.UC.BB2.30.GS, cumsum.F)) %>% tail(n = 1)
+FCH4.UC.cumBB2.GS <- data.frame(lapply(FCH4.UC.cumBB2.GS, nmoltog))
+FCH4.UC.cum.95BB2.GS <-1.96*(sd(FCH4.UC.cumBB2.GS))
+
+FCH4.UC.BB2.30.NGS <- data.frame(lapply(FCH4.UC.BB2.NGS[2:21], nmolsto30))  
+FCH4.UC.BB2.g.NGS <- data.frame(lapply(FCH4.UC.BB2.30.NGS, nmoltog)) 
+FCH4.UC.cumBB2.NGS <- data.frame(lapply(FCH4.UC.BB2.30.NGS, cumsum.F)) %>% tail(n = 1)
+FCH4.UC.cumBB2.NGS <- data.frame(lapply(FCH4.UC.cumBB2.NGS, nmoltog))
+FCH4.UC.cum.95BB2.NGS <-1.96*(sd(FCH4.UC.cumBB2.NGS))
+
+```
+
+```{r calc uncertainty for radiative balance}
+DB2.20.RB <- CI95.2 + DB2.CI95.FCH4.20
+DB2.100.RB <- CI95.2 + DB2.CI95.FCH4.100
+```
 
 ```{r CH4 flux}
+test1 <- Flux.input_data %>% filter(Site == "CA-DB2") %>% mutate(FCH4BB2lower = CH4cum_f_RF_gC -27.3,
+                                                                 FCH4BB2upper = CH4cum_f_RF_gC +27.3)
+
+Flux.input_data$FCH4lowerBB2<- ifelse(Flux.input_data$Site == 'CA-DBB', NA, test1$FCH4BB2lower)
+Flux.input_data$FCH4upperBB2<- ifelse(Flux.input_data$Site == 'CA-DBB', NA, test1$FCH4BB2upper)
+Flux.input_data$FCH4BB2<- ifelse(Flux.input_data$Site == 'CA-DBB', NA, Flux.input_data$CH4cum_f_RF_gC)
+
+
+
 (CH4cum.p <-Flux.input_data %>% 
   ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), CH4cum_f_RF_gC, color = Site)) +
+   #geom_ribbon(aes(x = as.Date(jday, origin = as.Date("2020-01-01")), ymin = FCH4lowerBB2, ymax = FCH4upperBB2), fill = "blue", alpha = 0.25)+
   geom_line()+
     #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  ylab(bquote('Cumulative' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('Cumulative FCH4 (g C' ~m^-2~')'))+
   xlab("Month")+
      scale_x_date(date_breaks = "1 month", date_labels = "%b") +
-    scale_color_aaas()+
-  theme_bw())
+    scale_color_jco()+
+    ggtitle("a") +
+  theme_bw()+
+   theme(axis.text = element_text(size=14),
+         axis.title = element_text(size=15),
+         axis.title.x = element_blank(),
+         axis.text.x = element_blank(),
+         legend.position=c(.15, 0.8),
+         legend.key.size = unit(1.5, "line"),
+         legend.title = element_text(size = 13),
+         legend.text = element_text(size= 13)))
 
-Flux.input_data %>%
-  dplyr::select(c(Site, CH4cum_f_RF_gC, jday)) %>%
-  group_by(Site) %>%
+ 
+
+
+
+  ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4cum.tiff", width = 7, height = 4, device='tiff', dpi=300)
+
+
+cumsumCH4 <- Flux.input_data %>%
+  dplyr::select(c(Site, CH4cum_f_RF_gC, jday, month_local)) %>%
+  group_by(Site, month_local) %>%
   mutate(row = row_number()) %>%
-  pivot_wider(names_from = Site, values_from = CH4cum_f_RF_gC) %>%
-  summarise(BB1 = last(na.omit(BB1)),
-            BB2 = last(na.omit(BB2))) %>%
-  kbl(caption = "Total CH4 flux (g C m-2 day-1") %>%
-  kable_classic(html_font = "Cambria")
+  pivot_wider(names_from = Site, values_from = CH4cum_f_RF_gC) 
+
+cumsumCH4 <- Flux.input_data %>%
+  dplyr::select(c(Site, CH4gC_f_RF, jday, month_local)) %>%
+  group_by(Site, month_local) %>%
+  mutate(row = row_number()) %>%
+  pivot_wider(names_from = Site, values_from = CH4gC_f_RF)
+
+new <- cumsumCH4 %>% group_by(month_local) %>%
+  summarise(CH4gCcum = cumsum(`CA-DB2`))
+
+  
+  
+  
+  
+  
+  
+  
+  ddply(c("month_local"), summarise,
+        BB1cumsum = cumsum(cumsumCH4$`CA-DBB`),
+         BB2cumsum = cumsum(cumsumCH4$`CA-DB2`))
+  
+  
+
+
+
+(CH4.p <-Flux.input_data %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), CH4mgC_f_RF, color = Site)) +
+  geom_line()+
+    #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  ylab(bquote('FCH4 (mg C' ~m^-2~')'))+
+  xlab("Month")+
+ scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_color_jco()+
+    ggtitle("b")+
+ theme_bw()+
+   theme(axis.text = element_text(size=14),
+         axis.title = element_text(size=15),
+         legend.position = "none"))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4time.tiff", width = 6, height = 4.3, device='tiff', dpi=300)
+
+FCH4.arranged <- ggarrange(CH4cum.p, CH4.p, nrow = 2, common.legend = TRUE, align = "v", heights=c(1, 1.2))
+FCH4.arranged
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/FCH4arranged.tiff", width = 9, height = 7, device='tiff', dpi=330)
+
+
+
+
+CH4 <- Flux.input_data %>% select(Site, CH4mgC_f_RF, jday, Period) %>% 
+  ddply(c("Site", "Period"), summarise,
+        FCH4 = mean(CH4mgC_f_RF))
+ch4<- aov(CH4mgC_f_RF~Site*Period, data = Flux.input_data)
+TukeyHSD(ch4)
+
+Flux.input_data %>% group_by(Site, Period) %>%
+  summarise(sum(CH4gC_f_RF))
 
 kruskal.test(CH4cum_f_RF_gC ~ Site, data = Flux.input_data)
+kruskal.test(CH4cum_f_RF_gC ~ Site, data = GS.Flux.input_data)
+kruskal.test(CH4cum_f_RF_gC ~ Site, data = NGS.Flux.input_data)
+
+
+
+
 ```
 
 ### GHG budget
 
 ```{r calculating CO2 equivalents}
-GWPCH4.20 <- 84 
-GWPCH4.100 <- 28 # no feedback
+#GWPCH4.20 <- 84 
+#GWPCH4.100 <- 28 # no feedback
 SGWPCH4.100 <- 45
 SGWPCH4.20 <- 96
 
@@ -627,35 +1478,35 @@ CO2eq <- Flux.input_data %>%
   mutate(SGWPtotal20 = cumNEECO2 + cumCH4gC20yrSGWP) %>%
   mutate(SGWPtotal100 = cumNEECO2 + cumCH4gC100yrSGWP)
 
+#USE THIS ONE BELOW
+CO2eq.2 <- Flux.input_data %>% 
+  group_by(Site,month_local) %>%
+  summarise(NEE = sum(NEEgC_f),
+            CH4 = sum(CH4gC_f_RF)) %>%
+  mutate(CH4_CH4 = (CH4 * (16.04/12.01)),
+         CO2_CO2eq = NEE * (44.01/12.01),
+         SGWP100CH4 = SGWPCH4.100 * (CH4 * (16.04/12.01)),
+         SGWP20CH4 = SGWPCH4.20 * (CH4 * (16.04/12.01))) %>%
+  group_by(Site) %>%
+  mutate(cumCO2 = cumsum(NEE),
+         cumch4 = cumsum(CH4),
+         SGWPcumCH4100yr = cumsum(SGWP100CH4),
+         SGWPcumCH420yr = cumsum(SGWP20CH4)) %>%
+         #cumCH4gC20yrSGWP = cumsum(CH4)*SGWPCH4.20,
+         #cumCH4gC100yrSGWP = cumsum(CH4_CH4)*SGWPCH4.100) %>%
+  mutate(cumNEESGWP = cumsum(NEE) - cumsum(CH4))%>%
+  mutate(cumNEECO2 = cumNEESGWP *(44.01/12.01)) %>%
+  #mutate(cumNEECO2 = cumsum(NEE) *(44.01/12.01)) %>%
+  #mutate(SGWPtotal20 = cumNEECO2 + cumCH4gC20yrSGWP) %>%
+  #mutate(SGWPtotal100 = cumNEECO2 + cumCH4gC100yrSGWP)
+  mutate(SGWPtotal20 = cumNEECO2 + SGWPcumCH420yr) %>%
+  mutate(SGWPtotal100 = cumNEECO2 + SGWPcumCH4100yr)
 
-#The rest of this chunk write csv files that are sued to calculate radiative forcing in the script from K.Nugent
-BB1.RF <- CO2eq %>%
-  filter(Site == "BB1") %>%
-  select(c(cumCO2, cumch4)) %>%
-  slice_tail() %>%
-  summarise(cumCO2kg = cumCO2 / 100,
-            cumch4kg = cumch4 /100)
-
-write.csv(BB1.RF, "~/Google Drive/Micromet Lab/People/2019-Marion Nyberg/BB1-2/peat_RF_model_input_files/BB1_restored.csv")
- 
-
-BB2.RF <- CO2eq %>%
-  filter(Site == "BB2") %>%
-  select(c(cumCO2, cumch4))  %>%
-  slice_tail()%>%
-  summarise(cumCO2kg = cumCO2 / 100,
-            cumch4kg = cumch4 /100)
-
-
-write.csv(BB2.RF, "~/Google Drive/Micromet Lab/People/2019-Marion Nyberg/BB1-2/peat_RF_model_input_files/BB2_restored.csv")
 
 ```
 
 __SGWP__
 
-On both a 20 and 100 year timescale, both sites act a net source of warming to the atmosphere. On a 20 year timescale, the higher CH4 emissions at BB1, coupled with being a CO2 sink, lead to the site having a greater warming effect. However, on a 100 year timescale, BB2 has a much greater warming effect. This suggests that over a longer timescale, if the site is a CO2 sink (BB1), having higher CH4 emissions will not offset the CO2 sink potential.
- - On a short timescale, it is more important to have low CH4 emissions
- - On a long timescale, it is more important to be a CO2 sink
 
 ```{r SGWP}
 CO2eq %>%
@@ -681,21 +1532,67 @@ CO2eq %>%
 
 ### Environmental effects on CO2 fluxes
 
+These transformations have been applied: Fulldata <- Fulldata %>% (NGFflux.input_data)
+  mutate(CH4_gC = (ch4gC + 0.03),
+         CH4_mgC = (ch4mgC + 26)) %>%
+  mutate(logCH4_gC = log(CH4_gC),
+         logCH4_mgC = log(CH4_mgC))
+         
+DONT USE CH4_MGC
+
+GOING TO RECALCULATE MIN TO ADD FOR EACH SITE. 
+
 ```{r join flux and environmental data}
 setwd(wd)
 library(broom)
 
 NGFflux.input_file <- "data/BB_fulldata.csv"
 NGFflux.input_data <- read.csv(NGFflux.input_file) %>%
-  select(c("Site", "jday", 39:48, ))
+  select(c("Site", "jday", 39:48, )) %>%
+  select(-c(logCH4_mgC, logCH4_gC))
 
-Flux.Env <- right_join(Flux.input_data, Env.input_data,  by = c("jday", "Site")) %>%
-   select(-c("TS.30_mean", "TS.30_min", "TS.30_max", "X.x", "X.y", "month_local")) %>% #remove unnecessary variables
-   right_join(NGFflux.input_data, by = "jday", "Site") %>%
-  rename(Site = Site.x)
+NGFflux.input_data$Site <- revalue(NGFflux.input_data$Site, c("BB1"="CA-DBB", "BB2"="CA-DB2")) #rename factors
+
+
+#To add constant to each site separately (to CH4) for log transformation
+NGFflux.input_data %>% filter(Site =="CA-DBB") %>%
+  summary()
+
+NGFflux.input_data %>% filter(Site =="CA-DB2") %>%
+  summary()
+
+Flux.Env <- right_join(Flux.input_data, Env.input_data,  by = c("jday", "Site")) 
+Flux.Env$lnRECO <- log(Flux.Env$RecogC)
+
+ind.GS <- (Flux.Env$jday >= 92 & Flux.Env$jday <= 274)
+ind.NGS <- (Flux.Env$jday < 92 | Flux.Env$jday >=275)
+Flux.Env$Period <- ''
+Flux.Env$Period[ind.GS] <- 'GS'
+Flux.Env$Period[ind.NGS] <- 'NGS'
+
+Flux.Env.Ngf <- right_join(Env.input_data, NGFflux.input_data) #Using non gapfilled data
+Flux.Env.GF.NGF <- right_join(Flux.Env.Ngf, Flux.Env)
+
+ind.GS <- (Flux.Env.Ngf$jday >= 92 & Flux.Env.Ngf$jday <= 274)
+ind.NGS <- (Flux.Env.Ngf$jday < 92 | Flux.Env.Ngf$jday >=275)
+
+
+Flux.Env.Ngf$Period <- ''
+Flux.Env.Ngf$Period[ind.GS] <- 'GS'
+Flux.Env.Ngf$Period[ind.NGS] <- 'NGS'
+
+ind.GS <- (Flux.Env.GF.NGF$jday >= 92 & Flux.Env.GF.NGF$jday <= 274)
+ind.NGS <- (Flux.Env.GF.NGF$jday < 92 | Flux.Env.GF.NGF$jday >=275)
+Flux.Env.GF.NGF$Period <- ''
+Flux.Env.GF.NGF$Period[ind.GS] <- 'GS'
+Flux.Env.GF.NGF$Period[ind.NGS] <- 'NGS'
 
 Final.output_file <-"data/Final.csv"
 write.csv(Flux.Env, Final.output_file)
+
+Final.output_fileNgf <- "data/Nongf.csv"
+write.csv(Flux.Env.Ngf, Final.output_fileNgf)
+
 ```
 
 
@@ -709,124 +1606,344 @@ For any given soil temperature, respiration is higher at BB2 than BB1.
 
 - The relationship look non-linear, so I will use polynomial regression to find which relationship is best for each site.
 
-- Is there a point in calculating Q10s if WTH is such an important driver? 
-  - Should calculate Q10s.
-
-```{r Reco and Temp and WTH effect , figures-side, fig.show="hold", out.width="50%"}
+```{r Reco WTH effect , figures-side, fig.show="hold", out.width="50%"}
 #NOTES:
 #Compare GS vs. Non GS - could compare the magnitude of difference to see if there is a particular time of year when the influence is higher
 
-(ER.TS5.P <- Flux.Env %>%
+
+(ER.WTH.P <- Flux.Env %>%
   #filter(TS.5_mean > '0') %>%
-  ggplot(., aes(TS.5_mean, RecogC, color= Site)) +
-       scale_color_aaas()+
-   xlab('5cm Soil temperature (deg C)')+
+  ggplot(., aes(WTH._mean, log(RecogC), color= Site)) +
+       scale_color_jco()+
+   xlab('WTH(cm)')+
    ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
   geom_point()+
-   ggtitle("Reco ~ Soil temp")+
-  theme_bw())
+   geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("b")+
+  theme_bw()+
+   theme(legend.position = "none", axis.text = element_text(size = 14),
+          axis.title = element_text(size = 15),
+         axis.text.y = element_blank(),
+         axis.title.y = element_blank()))
 
-(ER.TS5.P <- Flux.Env %>%
-  #filter(TS.5_mean > '0') %>%
+(ER.WTH.GS.P <- Flux.Env %>%
+  filter(Period == 'GS') %>%
+  ggplot(., aes(WTH._mean, RecogC, color= Site)) +
+       scale_color_jco()+
+   xlab('WTH(cm)')+
+   ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+  geom_point()+
+    geom_smooth(method = "lm", se = FALSE)+
+  theme_bw()+
+        ggtitle("Growing season")+
+    theme(legend.position = "none",
+          axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_blank()))
+
+(ER.WTH.NGS.P <- Flux.Env %>%
+  filter(Period == 'NGS') %>%
   ggplot(., aes(WTH._mean, RecogC, color= Site)) +
        scale_color_aaas()+
    xlab('WTH(cm)')+
    ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
-    ggtitle("Reco ~ WTH")+
   geom_point()+
-  theme_bw())
+        geom_smooth(method = "lm", se = FALSE)+
+    ggtitle("Non-growing season")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+        axis.title.y = element_blank()))
+
+ggarrange(ER.WTH.P, ER.WTH.GS.P, ER.WTH.NGS.P, nrow = 1, ncol = 3, common.legend = TRUE, widths = c(1, .9, .9))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/RecoWTH.tiff", width = 8, height = 4, device='tiff', dpi=300)
+
+
+RECO_WTH <- aov(RecogC~WTH._mean*Site, Flux.Env)
+summary(RECO_WTH)
 ```
-
-
 
 
 ```{r split BB1 and BB2 data 1st time}
 BB1 <- Flux.Env %>%
-  filter(Site == "BB1")
+  filter(Site == "CA-DBB") %>%
+  mutate(lnRECO = log(RecogC))
+#%>%
+  #drop_na(WTH._mean)
 
 BB2 <- Flux.Env %>%
-  filter(Site == "BB2")
+  filter(Site == "CA-DB2") %>%
+    mutate(lnRECO = log(RecogC))
+
 ```
  
 
 __BB1__ 
 
-Calculate Q10 for ecosystem respiration. 
+Calculate Q10 for ecosystem respiration. Tutorial from https://stackoverflow.com/questions/66060024/how-to-get-the-paremeters-when-i-have-a-given-data-and-formula-in-r 
 
 ```{r BB1 Reco Q10}
-Temp.Reco.BB1 <- lm(RecogC~TS.5_mean, data = BB1)
-summary(Temp.Reco.BB1)
+#Annual
+#nlsfitBB1.annual <- nls(RecogC ~ a*exp(b*BB1$TS.5_mean), data = BB1, start = list(a = 0.1, b = 0.1))
+
+#coefs.BB1annual <- coef(nlsfitBB1.annual)
+#coefs.BB1annual
+
+#plot(BB1$TS.5_mean, BB1$RecogC)
+#lines(BB1$TS.5_mean, coefs.BB1annual[["a"]]*exp(coefs.BB1annual[["b"]]*BB1$TS.5_mean))
+
+#Q10.BB1annual <- exp(10*coefs.BB1annual[["b"]])
+#Q10.BB1annual
+
+#a.annBB1 <- 0.1272996
+#b.annBB1 <- 0.1399094 
+
+#### OR IF USING LOG:
+shapiro.test(BB1$lnRECO)
+
+Q10.RECO.BB1 <- lm(lnRECO~TS.5_mean, data = BB1)
+summary(Q10.RECO.BB1)
+#ln(RECO) = -2 + 0.12(TS)
+lnQ10.BB1 <- exp(10*0.12)
+
+
+Q10.RECO.BB2 <- lm(lnRECO~TS.5_mean, data = BB2)
+summary(Q10.RECO.BB2)
+#ln(RECO) = -0.9 + 0.09(TS)
+lnQ10.BB2 <- exp(10*0.09)
+
+#GS
+BB1.GS <- BB1 %>% filter(Period.y =="GS")
+nlsfit.GS.CO2BB1 <- nls(RecogC ~ a*exp(b*BB1.GS$TS.5_mean), data = BB1.GS, start = list(a = 0.1, b = 0.1))
+
+coefs.GS.CO2BB1 <- coef(nlsfit.GS.CO2BB1)
+coefs.GS.CO2BB1
+
+plot(BB1.GS$TS.5_mean, BB1.GS$RecogC)
+lines(BB1.GS$TS.5_mean, coefs.GS.CO2BB1[["a"]]*exp(coefs.GS.CO2BB1[["b"]]*BB1.GS$TS.5_mean))
+
+Q10.GS.GS.CO2BB1 <- exp(10*coefs.GS.CO2BB1[["b"]])
+Q10.GS.GS.CO2BB1
+
+a.GSBB1CO2 <- 0.04979863
+b.GSBB1CO2 <- 0.19540514
+
+TS.BB1.modGS <- lm(RecogC~TS.5_mean, data = BB1.GS)
+MASS::boxcox(TS.BB1.modGS)
+summary(TS.BB1.modGS)
+
+#NGS
+BB1.NGS <- BB1 %>% filter(Period.y =="NGS")
+nlsfit.NGS.CO2BB1 <- nls(RecogC ~ a*exp(b*BB1.NGS$TS.5_mean), data = BB1.NGS, start = list(a = 0.1, b = 0.1))
+
+coefs.NGS.CO2BB1 <- coef(nlsfit.NGS.CO2BB1)
+coefs.NGS.CO2BB1
+
+plot(BB1.NGS$TS.5_mean, BB1.NGS$RecogC)
+lines(BB1.NGS$TS.5_mean, coefs.NGS.CO2BB1[["a"]]*exp(coefs.NGS.CO2BB1[["b"]]*BB1.NGS$TS.5_mean))
+
+Q10.NGS.CO2BB1 <- exp(10*coefs.NGS.CO2BB1[["b"]])
+Q10.NGS.CO2BB1
+
+a.NGSBB1CO2 <- 0.21284189
+b.NGSBB1CO2 <- 0.09413844
+
+TS.BB1.modNGS <- lm(RecogC~TS.5_mean, data = BB1.NGS)
+MASS::boxcox(TS.BB1.modNGS)
+summary(TS.BB1.modNGS)
+
+test <- ggplot(BB1.NGS, aes(jday, RecogC))+geom_point()
+ggplotly(test)
+
+TS.BB1.mod <- lm(RecogC~TS.5_mean, data = BB1)
+MASS::boxcox(TS.BB1.mod)
+summary(TS.BB1.mod)
+
+TS.BB2.mod <- lm(RecogC~TS.5_mean, data = BB2)
+MASS::boxcox(TS.BB2.mod)
+summary(TS.BB2.mod)
+
+TS5.ER <- aov(RecogC~TS.5_mean*Site, data = Flux.Env)
+summary(TS5.ER)
 ```
+
+
+```{r BB2 Reco Q10}
+# Annual
+nlsfitBB2.annual <- nls(RecogC ~ a*exp(b*BB2$TS.5_mean), data = BB2, start = list(a = 0.1, b = 0.1))
+
+coefs.BB2annual <- coef(nlsfitBB2.annual)
+coefs.BB2annual
+
+plot(BB2$TS.5_mean, BB2$RecogC)
+lines(BB2$TS.5_mean, coefs.BB2annual[["a"]]*exp(coefs.BB2annual[["b"]]*BB2$TS.5_mean))
+
+Q10.BB2annual <- exp(10*coefs.BB2annual[["b"]])
+Q10.BB2annual
+
+a.annBB2 <- 0.45054453
+b.annBB2 <- 0.08833384
+
+
+#GS
+BB2.GS <- BB2 %>% filter(Period =="GS")
+nlsfit.GS.CO2BB2 <- nls(RecogC ~ a*exp(b*BB2.GS$TS.5_mean), data = BB2.GS, start = list(a = 0.1, b = 0.1))
+
+coefs.GS.CO2BB2 <- coef(nlsfit.GS.CO2BB2)
+coefs.GS.CO2BB2
+
+plot(BB2.GS$TS.5_mean, BB2.GS$RecogC)
+lines(BB2.GS$TS.5_mean, coefs.GS.CO2BB2[["a"]]*exp(coefs.GS.CO2BB2[["b"]]*BB2.GS$TS.5_mean))
+
+Q10.GS.GS.CO2BB2 <- exp(10*coefs.GS.CO2BB2[["b"]])
+Q10.GS.GS.CO2BB2
+
+a.GSBB2CO2 <- 0.42124984
+b.GSBB2CO2 <- 0.09207058
+
+TS.BB2.modGS <- lm(RecogC~TS.5_mean, data = BB2.GS)
+MASS::boxcox(TS.BB2.modGS)
+summary(TS.BB2.modGS)
+
+#NGS
+BB2.NGS <- BB2 %>% filter(Period =="NGS")
+nlsfit.NGS.CO2BB2 <- nls(RecogC ~ a*exp(b*BB2.NGS$TS.5_mean), data = BB2.NGS, start = list(a = 0.1, b = 0.1))
+
+coefs.NGS.CO2BB2 <- coef(nlsfit.NGS.CO2BB2)
+coefs.NGS.CO2BB2
+
+plot(BB2.NGS$TS.5_mean, BB2.NGS$RecogC)
+lines(BB2.NGS$TS.5_mean, coefs.NGS.CO2BB2[["a"]]*exp(coefs.NGS.CO2BB2[["b"]]*BB2.NGS$TS.5_mean))
+
+Q10.NGS.CO2BB2 <- exp(10*coefs.NGS.CO2BB2[["b"]])
+Q10.NGS.CO2BB2
+
+a.NGSBB2CO2 <- 0.43806467
+b.NGSBB2CO2 <- 0.09516392
+
+TS.BB2.modNGS <- lm(RecogC~TS.5_mean, data = BB2.NGS)
+MASS::boxcox(TS.BB2.modNGS)
+summary(TS.BB2.modNGS)
+```
+
+```{r Reco Temp}
+library(ggpubr)
+
+TS.BB1.mod <- lm(RecogC~TS.5_mean, data = BB1)
+MASS::boxcox(TS.BB1.mod)
+plot(TS.BB1.mod)
+summary(TS.BB1.mod)
+
+
+(ER.TS5.P <- Flux.Env %>%
+  #filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, RecogC, color= Site)) +
+       scale_color_jco()+
+   xlab('5cm Soil temperature (°C)')+
+   ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
+  geom_point()+
+  stat_function(fun=function(x) a.annBB1*exp(b.annBB1*x), colour = "red")+
+  stat_function(fun=function(x) a.annBB2*exp(b.annBB2*x), colour = "darkblue")+
+    ggtitle("a")+
+  theme_bw()+
+   theme(legend.position = "none",
+          axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_text(size = 12)))
+
+ER.TS5GS.P <- Flux.Env %>%
+  filter(Period == "GS") %>%
+  ggplot(., aes(TS.5_mean, RecogC, color= Site)) +
+       scale_color_aaas()+
+   xlab('5cm Soil temperature (°C)')+
+   ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
+  geom_point()+
+  stat_function(fun=function(x) a.GSBB1CO2*exp(b.GSBB1CO2*x), colour = "")+
+  stat_function(fun=function(x) a.GSBB2CO2*exp(b.GSBB2CO2*x), colour = "darkblue")+
+ggtitle("b.) Growing season")+
+  theme_bw()+
+    theme(legend.position = "none",
+          axis.title.y = element_blank(),
+          axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12))
+
+ER.TS5NGS.P <- Flux.Env %>%
+  filter(Period == "NGS") %>%
+  ggplot(., aes(TS.5_mean, RecogC, color= Site)) +
+       scale_color_aaas()+
+   xlab('5cm Soil temperature (°C)')+
+   ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
+  geom_point()+
+  stat_function(fun=function(x) a.NGSBB1CO2*exp(b.NGSBB1CO2*x), colour = "red")+
+  stat_function(fun=function(x) a.NGSBB2CO2*exp(b.NGSBB2CO2*x), colour = "darkblue")+
+ggtitle("c.) Non-growing season")+
+  theme_bw()+
+    theme(axis.title.y = element_blank(),
+          axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          legend.title = element_text(size = 15),
+          legend.text = element_text(size = 14))
+
+ggarrange(ER.TS5.P, ER.TS5GS.P, ER.TS5NGS.P, nrow = 1, ncol = 3, common.legend = TRUE, widths = c(1, 0.9, 0.9))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/RecoTemp.tiff", width = 8, height = 4, device='tiff', dpi=300)
+
+```
+
+
 
 
 For BB1, 2 models to predict Reco were very similar (model 4(with WTH) and model 7). Thinking of going with model 7, which doesn't include WTH. Within sites, how important is WTH in explaining Reco? Need to check model assumptions. Including water table height does not sig improve (0.09) model. Therefore Reco at BB1 is predominately driven by temperature, and not WTH.
 
 ```{r BB1 model reln between Reco and Temp and WTH}
 # Polynomial regression: Check for non-linear relationships #http://www.sthda.com/english/articles/40-regression-analysis/162-nonlinear-regression-essentials-in-r-polynomial-and-spline-regression-models/
+cor.test(BB1$WTH._mean, BB1$TS.5_mean)
 
 # Build the models
-model.1 <- lm(RecogC~ poly(TS.5_mean, 3, raw = TRUE), data = BB1)
-model.2 <- lm(RecogC~ poly(TS.5_mean, 2, raw = TRUE), data = BB1)
-model.3 <- lm(RecogC~ TS.5_mean, data = BB1)
+#model.3 <- lm(RecogC~ TS.5_mean, data = BB1)
 model.4 <- lm(RecogC~ TS.5_mean + I(TS.5_mean^3) + WTH._mean, data = BB1) # Model with highest R2, only slightly higher than model without WTH (model 7)., but WTH isn't actually a significant predictor so will use model 7
 model.5 <- lm(RecogC ~ log(TS.5_mean), data = BB1)
-model.6 <- lm(log(RecogC) ~ TS.5_mean, data = BB1)
 model.7 <- lm(RecogC~ TS.5_mean + I(TS.5_mean^3), data = BB1)  # use this model 
+model.8 <- lm(log(RecogC)~ WTH._mean, data = BB1)
+model.9 <- lm(log(RecogC)~ TS.5_mean * WTH._mean, data = BB1)
+model.10 <- lm(log(RecogC)~ TS.5_mean, data = BB1)
+model.11 <- lm(log(RecogC)~ TS.5_mean + WTH._mean, data = BB1)
 
 
-#summary(model.7)
-#summary(model.4)
+model.sel(model.8, model.9, model.11)
+
+summary(model.11)
+summary(model.3)
 #summ(model.4)
 #summ(model.7)  # need to check if ols is meeting assumptions
-
-anova(model.7,model.4)
-
-set.seed(123)
-training.samples <- BB1$RecogC %>%
-  createDataPartition(p = 0.8, list = FALSE)
-train.data  <- BB1[training.samples, ]
-test.data <- BB1[-training.samples, ]
-
-# Make predictions
-predictions <- model.7 %>% predict(test.data)
-
-# Model performance
-#data.frame(
- # RMSE = RMSE(predictions, test.data$RecogC),
-  #R2 = R2(predictions, test.data$RecogC)
-#)
-
-# save predictions of the model in the new data frame 
-# together with variable you want to plot against
-#predicted_df <- data.frame(Reco_pred = predict(model.4, BB1), TS.5_mean=BB1$TS.5_mean)
-
-# this is the predicted line of multiple linear regression
-#ggplot(data = BB1, aes(x = RecogC, y = TS.5_mean)) + 
- # geom_point(color='blue') +
-  #geom_line(color='red',data = predicted_df, aes(x=Reco_pred, y=TS.5_mean))
-
-
-#plotting model 7
-#ggplot(train.data, aes(TS.5_mean, RecogC) ) +
- # geom_point(aes(color = WTH._mean)) +
-  #  scale_color_gradient(low = "light blue", high = "dark blue")+
-  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  #theme_bw()
-
-#ggplot(BB1, aes(TS.5_mean, RecogC) ) +
- # geom_point() +
-  #  scale_color_gradient(low = "light blue", high = "dark blue")+
-  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  #theme_bw()
-
-#ggplot(BB1, aes(TS.5_mean, RecogC) ) +
- # geom_point(aes(color = WTH._mean)) +
-  #  scale_color_gradient(low = "light blue", high = "dark blue")+
-  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  #theme_bw()
 ```
+DONT NEED GPP MODELS
+```{r models for GPP BB1}
+# Build the models
+model.3 <- lm(GPPgC_f~ TS.5_mean, data = BB1)
+model.8 <- lm(GPPgC_f~ WTH._mean, data = BB1)
+model.9 <- lm(GPPgC_f~ TS.5_mean * WTH._mean, data = BB1)
 
+summary(model.8)
+model.sel(model.3, model.8, model.9)
 
+cor.test(Flux.Env$TS.5_mean, Flux.Env$WTH._mean)
+```
+```{r models for GPP BB2}
+cor.test(BB2$TS.5_mean, BB2$WTH._mean)
+
+# Build the models
+model.3 <- lm(GPPgC_f~ TS.5_mean, data = BB2)
+model.8 <- lm(GPPgC_f~ WTH._mean, data = BB2)
+model.9 <- lm(GPPgC_f~ TS.5_mean * WTH._mean, data = BB2)
+
+summary(model.8)
+model.sel(model.3, model.8, model.9)
+
+GPP.TS.5 <- aov(GPPgC_f~WTH._mean*Site, data = Flux.Env)
+summary(GPP.TS.5)
+```
 
 __BB2__ 
 
@@ -838,42 +1955,23 @@ At BB2, including WTH in the model sig. (P<0.05) improves it. BB2 gets significa
 # Build the models
 model.1 <- lm(RecogC~ poly(TS.5_mean, 3, raw = TRUE), data = BB2)
 model.2 <- lm(RecogC~ poly(TS.5_mean, 2, raw = TRUE), data = BB2)
-model.3 <- lm(RecogC~ TS.5_mean, data = BB2)
+model.3 <- lm(log(RecogC)~ TS.5_mean, data = BB2)
 model.4 <- lm(RecogC~ TS.5_mean + I(TS.5_mean^3)+ WTH._mean, data = BB2) #need to check distribution.. i.e. is it normal? highest R2
 model.5 <- lm(RecogC ~ log(TS.5_mean), data = BB2)
 model.6 <- lm(log(RecogC) ~ TS.5_mean, data = BB2)
-model.7 <- lm(RecogC ~ TS.5_mean + I(TS.5_mean^3), data = BB2) # model with 2nd highest R2
+model.7 <- lm(RecogC ~ TS.5_mean + I(TS.5_mean^3), data = BB2) #model with 2nd highest R2
+model.wth.BB2 <- lm(log(RecogC)~ WTH._mean, data = BB2)
+model.8.BB2 <- lm(log(RecogC)~ TS.5_mean + WTH._mean, data = BB2)
+
+cor.test(BB2$TS.5_mean, BB2$WTH._mean, method = "pearson")
 
 #summ(model.7) # need to check if ols is meeting assumptions
 #summ(model.4)
 
-#summary(model.7)
+summary(model.wth.BB2)
 #summary(model.4)
 
-anova(model.7, model.4)
-
-set.seed(123)
-training.samples2 <- BB2$RecogC %>%
-  createDataPartition(p = 0.8, list = FALSE)
-train.data2  <- BB2[training.samples2, ]
-test.data2 <- BB2[-training.samples2, ]
-
-# Make predictions
-predictions <- model.4 %>% predict(test.data2)
-
-# Model performance
-#data.frame(
- # RMSE = RMSE(predictions, test.data2$RecogC),
-  #R2 = R2(predictions, test.data2$RecogC)
-#)
-
-#not plotting the correct regression here - plotting 
-#ggplot(train.data2, aes(TS.5_mean, RecogC) ) +
- # geom_point(aes(color = WTH._mean)) +
-  #scale_color_gradient(low = "light blue", high = "dark blue")+
-  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  #theme_bw()
-
+model.sel(model.3, model.wth.BB2, model.8.BB2)
 ```
 
 
@@ -881,78 +1979,278 @@ When comparing the two sites, note that whilst WTH was not a sig. important pred
 In both figures the plotted line does not take into account WTH, but is y ~ x + x^3
 
 ```{r compare BB1 and BB2 Reco, figures-side, fig.show="hold", out.width="50%"}
-ggplot(BB1, aes(TS.5_mean, RecogC) ) +
-  geom_point(aes(color = WTH._mean)) +
-  scale_color_gradient(low = "light blue", high = "dark blue")+
-  stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  xlab("5cm soil temperature (deg C)")+
-  ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
-  ggtitle("BB1")+
-  theme_bw()
+(modelCO2.bb1.p<- BB1 %>% 
+   drop_na(WTH._mean) %>%
+   ggplot(., aes(TS.5_mean, RecogC)) +
+  geom_point(aes(color = WTH._mean), na.rm = TRUE) +
+   stat_function(fun=function(x) a.annBB1*exp(b.annBB1*x))+
+  scale_color_gradient(low = "light blue", high = "dark blue", limits = c(-40,20))+
+  scale_y_continuous(limits = c(0,3.5))+
+     scale_x_continuous(limits = c(0,20))+
+  xlab("5cm soil temperature (°C)")+
+  ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
+   labs(color = "WTH") +
+  ggtitle("a")+
+  theme_bw() +
+   theme(axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_text(size = 12) ))
 
-ggplot(BB2, aes(TS.5_mean, RecogC) ) +
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/RecoTempWTH.tiff", width = 4, height = 4, device='tiff', dpi=300)
+
+
+(modelCO2.bb2.p <- ggplot(BB2, aes(TS.5_mean, RecogC)) +
   geom_point(aes(color = WTH._mean)) +
-  scale_color_gradient(low = "light blue", high = "dark blue")+
-  stat_smooth(method = lm, formula = y ~ x + I(x^3))+
-  xlab("5cm soil temperature (deg C)")+
-  ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
-  ggtitle("BB2")+
-  theme_bw()
+      stat_function(fun=function(x) a.annBB2*exp(b.annBB2*x)) +
+  scale_color_gradient(low = "light blue", high = "dark blue", limits = c(-40,20))+
+  scale_y_continuous(limits = c(0,3.5))+
+  #stat_smooth(method = lm, formula = y ~ x + I(x^3))+
+  xlab("5cm soil temperature (°C)")+
+  ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
+    labs(color= "WTH")+
+  ggtitle("b")+
+  theme_bw()+
+  theme()+
+   theme(axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_blank(),
+         axis.text.y = element_blank()))
+
+
+ggarrange(modelCO2.bb1.p, modelCO2.bb2.p, nrow = 1, ncol = 2, common.legend = TRUE, widths = c(1.1, 1))
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/RecoTempWTH.tiff", width = 6, height = 4, device='tiff', dpi=300)
+
+
+#LOGGED RECO
+
+(modelCO2.bb1.p<- BB1 %>% 
+   drop_na(WTH._mean) %>%
+   ggplot(., aes(TS.5_mean, lnRECO)) +
+  geom_point(aes(color = WTH._mean), na.rm = TRUE) +
+    stat_smooth(method = "lm", se = FALSE, color = "black", size = 0.5)+
+   #stat_function(fun=function(x) BB1.int+(BB1.coef*x))+
+  scale_color_gradient(low = "light blue", high = "dark blue", limits = c(-40,20))+
+  scale_y_continuous(limits = c(-3,1.5))+
+     scale_x_continuous(limits = c(0,20))+
+  xlab("5cm soil temperature (°C)")+
+  ylab(bquote('lnRECO (g C' ~m^-2~ day^-1*')'))+
+   labs(color = "WTH") +
+  ggtitle("b")+
+  theme_bw() +
+   theme( axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_blank(),
+         axis.text.y = element_blank()))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/RecoTempWTH.tiff", width = 4, height = 4, device='tiff', dpi=300)
+
+
+(modelCO2.bb2.p <- ggplot(BB2, aes(TS.5_mean, lnRECO)) +
+  geom_point(aes(color = WTH._mean))+
+      #stat_function(fun=function(x) BB2.int+(BB2.coef*x)) +
+  scale_color_gradient(low = "light blue", high = "dark blue", limits = c(-40,20))+
+  scale_y_continuous(limits = c(-3,1.5))+
+  stat_smooth(method = lm, se = FALSE, color = "black", size = 0.5)+
+  xlab("5cm soil temperature (°C)")+
+  ylab(bquote('lnRECO (g C' ~m^-2~ day^-1*')'))+
+    labs(color= "WTH")+
+  ggtitle("a")+
+  theme_bw()+
+  theme()+
+   theme(axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_text(size = 12)))
+
+
+ggarrange(modelCO2.bb2.p, modelCO2.bb1.p, nrow = 1, ncol = 2, common.legend = TRUE, widths = c(1.1, 1))
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/RecoTempWTHln.tiff", width = 6, height = 4, device='tiff', dpi=300)
+
 ```
 
 
 __GPP and PAR__
 
-For a given PAR value, GPP is generally higher at BB2 than BB1, suggesting that BB2 has better LUE. 
-
 ```{r GPP and PAR, warning = FALSE}
-(GPPPAR.p <-Flux.Env %>% 
-  ggplot(., aes(PARin_mean, GPP_DT, color = Site)) +
+GPP.BB1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_L3.csv') %>% filter(DATE >= '2020-01-01 00:00'& DATE <= '2021-01-01 00:00') %>% select(GPP_f, jday, co2_flux, DATE)
+GPP.BB1$Site <- "CA-DBB"
+GPP.BB1$DATE <- as.POSIXct(GPP.BB1$DATE, format = "%Y-%m-%dT%H:%M:%SZ", tz="UTC")
+GPP.BB1 <- full_join(GPP.BB1, Parin) # join par and co2 data
+
+GPP.BB2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_L3.csv')%>% filter(DATE >= '2020-01-01 00:00' & DATE <= '2021-01-01 00:00') %>% select(GPP_f, jday, co2_flux, DATE)
+GPP.BB2$Site <- "CA-DB2"
+GPP.BB2$DATE <- as.POSIXct(GPP.BB2$DATE, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+
+GPP.BB2 <- full_join(GPP.BB2, Parin)
+
+GPP <- full_join(GPP.BB1, GPP.BB2) %>% filter(INCOMING_PAR > '0.01')
+```
+
+```{r NEE and PAR}
+(NEEPAR.p <-GPP %>% #filter(co2gC<5) %>%
+  ggplot(., aes(INCOMING_PAR, co2_flux, color = Site)) +
   geom_point()+
-   geom_smooth(method = "lm", aes(colour = Site)) +
+   #geom_smooth(method = "lm", aes(colour = Site)) +
+      #stat_function(fun=function(x) B*(GPPPAR.1$co2gC) + R, colour = "red")+
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  ylab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+  ylab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
     xlab('PAR')+
-    scale_color_aaas()+
+    scale_color_jco()+
   theme_bw())
+
+NEEPAR <- aov(co2_flux~INCOMING_PAR*Site, data = GPP)
+summary(NEEPAR)
+
+#BB1 GS
+GPP.BB1.gs <- GPP.BB1 %>% filter(Period =="GS" & GPP_f > 0 & GPP_f <20) 
+#GPP.BB1.gs <- GPP.BB1.gs %>% mutate(NEE.GPP = co2_flux * -1) %>% filter(NEE.GPP > -20 & NEE.GPP < 20)
+
+#model <- nls(NEE.GPP ~ (a*GPP.BB1.gs$INCOMING_PAR)*b/(a*GPP.BB1.gs$INCOMING_PAR+b), start=list(a = 0.1, b = 0.1), data = GPP.BB1.gs)
+
+#coefs.Modelbb1 <- coef(model)
+#coefs.Modelbb1
+#a <- 0.005
+#b <- 4.26
+
+#plot(GPP.BB1.gs$INCOMING_PAR, GPP.BB1.gs$NEE.GPP)
+#lines(GPP.BB1.gs$INCOMING_PAR,predict(model), col = "red")
+
+#nls fit SIMILAR TO NINGYU'S PAPER
+#ggplot(GPP.BB1.gs, aes(INCOMING_PAR, NEE.GPP)) + geom_point() + 
+ # stat_function(fun=function(x) (a*x)*b/(a*x+b), colour = "red") +
+  #theme_bw()
+
+#using GPP - results look better?
+model.GPP <- nls(GPP_f ~ (a*GPP.BB1.gs$INCOMING_PAR)*b/(a*GPP.BB1.gs$INCOMING_PAR+b), start=list(a = 0.1, b = 0.1), data = GPP.BB1.gs)
+
+summary(model.GPP)
+
+coefs.Modelbb1.GPP <- coef(model.GPP)
+coefs.Modelbb1.GPP
+a.GPP <- 0.017
+b.GPP <- 4.58
+
+ggplot(GPP.BB1.gs, aes(INCOMING_PAR, GPP_f)) + geom_point() + 
+  stat_function(fun=function(x) (a.GPP*x)*b.GPP/(a.GPP*x+b.GPP), colour = "red") +
+      ylab(bquote('Incoming PAR (umol'  ~m^-2~day^-1*')'))+
+  theme_bw()
+
+#BB2 GS
+GPP.BB2.gs <- GPP.BB2 %>% filter(Period =="GS" & GPP_f > 0 & GPP_f < 20) 
+#GPP.BB2.gs <- GPP.BB2.gs %>% mutate(NEE.GPP = co2_flux * -1) %>% filter(NEE.GPP > -20 & NEE.GPP < 20)
+
+#model.2 <- nls(NEE.GPP ~ (a*GPP.BB2.gs$INCOMING_PAR)*b/(a*GPP.BB2.gs$INCOMING_PAR+b), start=list(a = 0.1, b = 0.1), data = GPP.BB2.gs)
+
+#coefs.Modelbb2 <- coef(model.2)
+#coefs.Modelbb2
+#a <- 0.006
+#b <- 4.25
+
+#plot(GPP.BB2.gs$INCOMING_PAR, GPP.BB2.gs$NEE.GPP)
+#lines(GPP.BB2.gs$INCOMING_PAR,predict(model.2), col = "red")
+
+#using GPP - results look better?
+model.GPP.2 <- nls(GPP_f ~ (a*GPP.BB2.gs$INCOMING_PAR)*b/(a*GPP.BB2.gs$INCOMING_PAR+b), start=list(a = 0.1, b = 0.1), data = GPP.BB2.gs)
+
+summary(model.GPP.2)
+
+coefs.Modelbb2.GPP <- coef(model.GPP.2)
+coefs.Modelbb2.GPP
+a.GPP.2 <- 0.025
+b.GPP.2 <- 5.5
+
+ggplot(GPP.BB2.gs, aes(INCOMING_PAR, GPP_f)) + geom_point() + 
+  stat_function(fun=function(x) (a.GPP.2*x)*b.GPP.2/(a.GPP.2*x+b.GPP.2), colour = "red") +
+      ylab(bquote('Incoming PAR (umol'  ~m^-2~day^-1*')'))+
+  theme_bw()
+
+LUE <- aov(GPP_f~INCOMING_PAR*Site, data = GPP)
+summary (LUE)
 ```
 
-
-__GPP and NDVI__
-
-Need to think about this more... what is the relationship? 
-
-- When using this with GPP to support each other, could think about above vs. below ground productivity.
-- check data? 
-- night time filled has -ve GPP valeus? 
-
-```{r GPP and NDVI, figures-side, fig.show="hold", out.width="50%"}
-(GPP_DT.NDVI.p <-Flux.Env %>% 
-  ggplot(., aes(NDVI_sf, GPP_DT, color = Site)) +
-  geom_point()+
-   geom_smooth(method = "loess", aes(colour = Site)) +
-   ggtitle("Day time filled GPP")+
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  #xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
-   # ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
-    scale_color_aaas()+
+```{r LIGHT RESPONSE CURVE GS}
+#Both sites together (GS):
+(GS.LR <- GPP %>% filter(Period == "GS" & INCOMING_PAR > 10 & GPP_f > 0 & GPP_f < 20) %>%
+  ggplot(., aes(INCOMING_PAR, GPP_f), group = Site) + geom_point(aes(color = Site))+
+  scale_color_jco()+
+    stat_function(fun=function(x) (a.GPP*x)*b.GPP/(a.GPP*x+b.GPP), colour = "#EFC000FF") +
+  stat_function(fun=function(x) (a.GPP.2*x)*b.GPP.2/(a.GPP.2*x+b.GPP.2), colour = "#0073C2FF") +
+        xlab(bquote('Incoming PAR ('*mu~'mol' ~m^-2~s^-1*')'))+
+          ylab(bquote('GPP ('*mu~'mol'  ~m^-2~s^-1*')'))+
+  ggtitle("a")+
+  theme(axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 15),
+         axis.title.y = element_text(size = 15))+
   theme_bw())
 
-(GPP_f.NDVI.p <-Flux.Env %>% 
-  ggplot(., aes(NDVI_sf, GPP_f, color = Site)) +
-  geom_point()+
-   geom_smooth(method = "loess", aes(colour = Site)) +
-    ggtitle("Night time filled GPP")+
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  #xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
-   # ylab(bquote('Daily' ~CH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
-    scale_color_aaas()+
-  theme_bw())
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/LUE.tiff", width = 6, height = 4, device='tiff', dpi=300)
 ```
 
+```{r LIGHT RESPONSE CURVE NGS}
+#BB1 NGS
+GPP.BB1.ngs <- GPP.BB1 %>% filter(Period =="NGS" & GPP_f > 0 & GPP_f < 20) 
+#GPP.BB1.ngs <- GPP.BB1.ngs %>% mutate(NEE.opp = co2_flux * -1) #%>% filter(NEE.GPP > -20 & NEE.GPP < 20)
+
+
+#using GPP - results look better?
+model.GPP.ngs <- nls(GPP_f ~ (a*GPP.BB1.ngs$INCOMING_PAR)*b/(a*GPP.BB1.ngs$INCOMING_PAR+b), start=list(a = 0.1, b = 0.1), data = GPP.BB1.ngs)
+
+summary(model.GPP.ngs)
+
+coefs.Modelbb1.GPP.ngs <- coef(model.GPP.ngs)
+coefs.Modelbb1.GPP.ngs
+a.GPP.ngs <- 0.01
+b.GPP.ngs <- 1.5
+
+ggplot(GPP.BB1.ngs, aes(INCOMING_PAR, GPP_f)) + geom_point() + 
+  stat_function(fun=function(x) (a.GPP.ngs*x)*b.GPP.ngs/(a.GPP.ngs*x+b.GPP.ngs), colour = "red") +
+      xlab(bquote('Incoming PAR (umol'  ~m^-2~day^-1*')'))+
+  scale_y_continuous(limits = c(-10, 10))+
+  theme_bw()
+
+#BB2 NGS
+GPP.BB2.ngs <- GPP.BB2 %>% filter(Period =="NGS" & GPP_f >0 & GPP_f < 20) 
+#GPP.BB2.ngs <- GPP.BB2.ngs %>% mutate(NEE.GPP = co2_flux * -1) %>% filter(NEE.GPP > '-20' & NEE.GPP < '20')
+
+#using GPP - results look better?
+model.GPP.2ngs <- nls(GPP_f ~ (a*GPP.BB2.ngs$INCOMING_PAR)*b/(a*GPP.BB2.ngs$INCOMING_PAR+b), start=list(a = 0.1, b = 0.1), data = GPP.BB2.ngs)
+summary(model.GPP.2ngs)
+
+coefs.Modelbb2.GPPngs <- coef(model.GPP.2ngs)
+coefs.Modelbb2.GPPngs
+a.GPP.2ngs <- 0.015
+b.GPP.2ngs <- 2.57
+
+ggplot(GPP.BB2.ngs, aes(INCOMING_PAR, GPP_f)) + geom_point() + 
+  stat_function(fun=function(x) (a.GPP.2ngs*x)*b.GPP.2ngs/(a.GPP.2ngs*x+b.GPP.2ngs), colour = "red") +
+      ylab(bquote('Incoming PAR (umol'  ~m^-2~day^-1*')'))+
+  theme_bw()
+
+#Both sites together (NGS):
+(NGS.lr <- GPP %>% filter(Period == "NGS" & INCOMING_PAR > 10 & GPP_f > 0 & GPP_f < 20) %>%
+  ggplot(., aes(INCOMING_PAR, GPP_f), group = Site) + geom_point(aes(color = Site))+
+  scale_color_jco()+
+    stat_function(fun=function(x) (a.GPP.ngs*x)*b.GPP.ngs/(a.GPP.ngs*x+b.GPP.ngs), colour = "#EFC000FF") +
+  stat_function(fun=function(x) (a.GPP.2ngs*x)*b.GPP.2ngs/(a.GPP.2ngs*x+b.GPP.2ngs), colour = "#0073C2FF") +
+        xlab(bquote('Incoming PAR ('*mu~'mol' ~m^-2~s^-1*')'))+
+          ylab(bquote('GPP ('*mu~'mol' ~m^-2~s^-1*')'))+
+  ggtitle("b") +
+  theme(axis.title.y = element_blank(),
+        axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 15))+
+         #axis.title.y = element_text(size = 12))+
+  theme_bw())
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/LUEngs.tiff", width = 6, height = 4, device='tiff', dpi=300)
 
 
 
+(lightresposne.arranged <- ggarrange(GS.LR, NGS.lr, ncol = 2, common.legend = TRUE, align = "h", widths=c(1, 1)))
+
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/LRarranged.tiff", width = 6, height = 4, device='tiff', dpi=330)
+
+```
 
 ### Environmental effects on CH4 fluxes
 
@@ -960,8 +2258,6 @@ Need to think about this more... what is the relationship?
 __CH4 and temperature response__
 
 Non-linear response to temperature. CH4 has a constant added and is log transformed. Response looks fairly similar between sites...
-
-Calculate Q10s for CH4? 
 
 
 __WTH and CH4__
@@ -975,105 +2271,282 @@ It would be good to plot a timeseries of WTH and CH4 flux as in Brown et al (201
 
 ```{r CH4 Temp response}
 library(car)
-Flux.Env <- Flux.Env %>%
-  mutate(CH4mgC_RF_log = log(CH4mgC_f_RF + 26))
 
 ```
 
 ```{r split BB1 and BB2 data}
-BB1 <- Flux.Env %>%
-  filter(Site == "BB1")
+#Flux.Env.Ngf$logCH4_mgC <- log(Flux.Env.Ngf$ch4mgC.C)
 
-BB2 <- Flux.Env %>%
-  filter(Site == "BB2")
+BB1 <- Flux.Env.GF.NGF %>%
+  filter(Site == "CA-DBB") %>%
+  mutate(ch4mgC.C = ch4mgC + 8) %>%
+  mutate(logCH4_mgC = log(ch4mgC.C)) %>%
+  filter(logCH4_mgC > 0)
+
+BB2 <- Flux.Env.GF.NGF %>%
+  filter(Site == "CA-DB2") %>%
+  filter(ch4mgC > -20) %>%
+  mutate(ch4mgC.C = ch4mgC + 20) %>%
+  mutate(logCH4_mgC = log(ch4mgC.C))
+
+Flux.Env.Ngf <- full_join(BB1, BB2)
+
+shapiro.test(Flux.Env.Ngf$logCH4_mgC)
 ```
 
-```{r CH4 temp and WTH response both sites, figures-side, fig.show="hold", out.width="50%"}
-#qqPlot(Flux.Env$CH4mgC_RF_log)
+```{r CH4 Q10 BB1}
+# AnnualUSE THE EXPONENTIAL FIT THAT IS CH4_MCG (NOT LNCH4_MGC)
+#nlsfit.annualBB1.CH4 <- nls(logCH4_mgC ~ a*exp(b*BB1$TS.5_mean), data = BB1, start = list(a = 0.1, b = 0.1))
+#summary(nlsfit.annualBB1.CH4)
 
-#ggplot(data = Flux.Env, aes(CH4mgC_f_RF)) + geom_histogram()
-#ggplot(data = Flux.Env, aes(x = TS.5_mean, y = CH4mgC_f_RF)) +
- # geom_point() #+
-   #scale_y_log10()
+nlsfit.annualBB1.CH4 <- nls(CH4_mgC ~ a*exp(b*BB1$TS.5_mean), data = BB1, start = list(a = 0.1, b = 0.1))
+summary(nlsfit.annualBB1.CH4)
+Q10.annualBB1.CH4 <- exp(10*coefs.annualBB1.CH4[["b"]])
 
-#lmmodel <- lm(log(CH4mgC_f_RF + 26)~TS.5_mean, data = Flux.Env) # use this transformation
-#summary(lmmodel)
-
-Temp.logCH4<- Flux.Env %>% #don't need to log transform CH4? 
-         #filter(CH4mgC_RF_log > 2) %>%
-  ggplot(., aes(TS.5_mean,CH4mgC_RF_log, color= Site)) +
-          scale_color_aaas()+
-     ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-   xlab('5cm soil temperature (deg C)')+
-  geom_point() +
-  ggtitle("CH4 ~ Soil temp")+
-  theme_bw()
-Temp.logCH4
+linear.temp.bb1 <- lm (logCH4_mgC~TS.5_mean, data = BB1)
+summary(linear.temp.bb1)
+lnQ10.BB1 <- exp(10*0.15)
 
 
-(WTH.logCH4<- Flux.Env %>% #don't need to log transform CH4? 
-  filter(#WTH._mean > -12.0,
-         logCH4_mgC > 2) %>%
-  ggplot(., aes(WTH._mean,CH4mgC_RF_log,  color= Site)) +
-          scale_color_aaas()+
-     ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-   xlab('WTH (cm)')+
-  geom_point() +
-    ggtitle(CH4 ~ WTH)+
-  theme_bw())
+#coefs.annualBB1.CH4 <- coef(nlsfit.annualBB1.CH4)
+#coefs.annualBB1.CH4
+
+#plot(BB1$TS.5_mean, BB1$logCH4_mgC)
+#lines(BB1$TS.5_mean, coefs.annualBB1.CH4[["a"]]*exp(coefs.annualBB1.CH4[["b"]]*BB1$TS.5_mean))
+
+#Q10.annualBB1.CH4 <- exp(10*coefs.annualBB1.CH4[["b"]])
+#Q10.annualBB1.CH4
+
+#a.BB1 <- 2.00939773
+#b.BB1 <- 0.04540436
 ```
 
+```{r CH4 Q10 BB2}
+# Annual - USE THE EXPONENTIAL FIT THAT IS CH4_MCG (NOT LNCH4_MGC)
+#nlsfit.AnnualBB2.CH4 <- nls(logCH4_mgC ~ a*exp(b*BB2$TS.5_mean), data = BB2, start = list(a = 0.1, b = 0.1))
+#summary(nlsfit.AnnualBB2.CH4)
 
-WTH is constrained here to be >-20 cm so we can compare the response of CH4 at both sites on a similar scale - sim. to Turetsky paper. 
-```{r WTH constrained}
-(WTH.logCH42<- Flux.Env %>%  
-  filter(WTH._mean > -20.0,
-         logCH4_mgC > 2) %>%
-  ggplot(., aes(WTH._mean,CH4mgC_RF_log,  color= Site)) +
+nlsfit.AnnualBB2.CH4 <- nls(CH4_mgC ~ a*exp(b*BB2$TS.5_mean), data = BB2, start = list(a = 0.1, b = 0.1))
+summary(nlsfit.AnnualBB2.CH4)
+#(Q10.AnnualBB2.CH4 <- exp(10*coefs.AnnualBB2.CH4[["b"]]))
+
+linear.temp.bb2 <- lm (logCH4_mgC~TS.5_mean, data = BB2)
+summary(linear.temp.bb2)
+lnQ10.BB2 <- exp(10*0.07)
+
+
+#coefs.AnnualBB2.CH4 <- coef(nlsfit.AnnualBB2.CH4)
+#coefs.AnnualBB2.CH4
+
+#plot(BB2$TS.5_mean, BB2$logCH4_mgC)
+#lines(BB2$TS.5_mean, coefs.AnnualBB2.CH4[["a"]]*exp(coefs.AnnualBB2.CH4[["b"]]*BB2$TS.5_mean))
+
+#(Q10.AnnualBB2.CH4 <- exp(10*coefs.AnnualBB2.CH4[["b"]]))
+
+#a.BB2 <- 3.00508092
+#b.BB2 <- 0.01801396 
+```
+
+```{r CH4 temp response, figures-side, fig.show="hold", out.width="50%"}
+#(Temp.logCH4<- Flux.Env.Ngf %>%  
+ #        #filter(logCH4_mgC > 2) %>%
+  #ggplot(., aes(TS.5_mean,logCH4_mgC, color= Site)) +
+   #       scale_color_aaas()+
+    # ylab(bquote('log F'~CH[4]~ '(mg C' ~m^-2~ day^-1*')'))+
+   #xlab('5cm soil temperature (°C)')+
+  #geom_point() +
+  #stat_function(fun=function(x) a.BB1*exp(b.BB1*x), colour = "red")+
+  #stat_function(fun=function(x) a.BB2*exp(b.BB2*x), colour = "darkblue")+
+  #  ggtitle("a.) Annual")+
+  #theme_bw()+
+  # theme(legend.position = "none",
+   #      axis.text = element_text(size = 12),
+    #      axis.title.x = element_text(size = 12),
+     #     axis.title.y = element_text(size = 12)))
+
+TS.BB1.modGS <-lm(logCH4_mgC~TS.5_mean, data = BB1.GS)
+MASS::boxcox(TS.BB1.modGS)
+summary(TS.BB1.modGS)
+RMSE.TS.BB1 <- sqrt(mean(residuals(TS.BB1.modGS)^2))
+
+TS.BB2.modGS <-lm(logCH4_mgC~TS.5_mean, data = BB2.GS)
+MASS::boxcox(TS.BB2.modGS)
+summary(TS.BB2.modGS)
+RMSE.TS.BB2 <- sqrt(mean(residuals(TS.BB2.mod)^2))
+
+Temp.logCH4GS<- Flux.Env.Ngf %>% #don't need to log transform CH4? 
+         filter(#logCH4_mgC > 2,
+                Period == "GS") %>%
+  ggplot(., aes(TS.5_mean,logCH4_mgC, color= Site)) +
           scale_color_aaas()+
      ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-   xlab('WTH (cm)')+
+   xlab('5cm soil temperature (°C)')+
   geom_point() +
-    ggtitle("CH4 ~ WTH")+
-  theme_bw())
+  #stat_function(fun=function(x) aGS.BB1*exp(bGS.BB1*x), colour = "red")+
+  #stat_function(fun=function(x) aGS.BB2*exp(bGS.BB2*x), colour = "darkblue")+
+    ggtitle("b.) Growing season")+
+  theme_bw()+
+    theme(legend.position = "none",
+          axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_blank())
+
+TS.BB1.modNGS <-lm(logCH4_mgC~TS.5_mean, data = BB1.NGS)
+MASS::boxcox(TS.BB1.modNGS)
+summary(TS.BB1.modNGS)
+RMSE.TS.BB1 <- sqrt(mean(residuals(TS.BB1.modNGS)^2))
+
+TS.BB2.modNGS <-lm(logCH4_mgC~TS.5_mean, data = BB2.NGS)
+MASS::boxcox(TS.BB2.modNGS)
+summary(TS.BB2.modNGS)
+RMSE.TS.BB2 <- sqrt(mean(residuals(TS.BB2.mod)^2))
+
+Temp.logCH4NGS<- Flux.Env.Ngf %>% #don't need to log transform CH4? 
+         filter(#logCH4_mgC > 2,
+                Period == "NGS") %>%
+  ggplot(., aes(TS.5_mean,logCH4_mgC, color= Site)) +
+          scale_color_aaas()+
+     ylab(bquote('log F'~CH[4]~ '(mg C' ~m^-2~ day^-1*')'))+
+   xlab('5cm soil temperature (°C)')+
+  geom_point() +
+  #stat_function(fun=function(x) a.NGSBB1*exp(b.NGSBB1*x), colour = "red")+
+  #stat_function(fun=function(x) a.NGSBB2*exp(b.NGSBB2*x), colour = "darkblue")+
+    ggtitle("c.) Non-growing season")+
+  theme_bw()+
+    theme(axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_blank(),
+          legend.title = element_text(size=14),
+          legend.text = element_text(size= 14))
+
+ggarrange(Temp.logCH4, Temp.logCH4GS, Temp.logCH4NGS, nrow = 1, ncol = 3, common.legend = TRUE, widths = c(1, .9, .9))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4temp.tiff", width = 8, height = 4, device='tiff', dpi=300)
+
+
+tiff(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4TS.tiff", width =900, height = 300) # The height of the plot in inches
+grid.arrange(cbind(ggplotGrob(Temp.logCH4), ggplotGrob(Temp.logCH4GS), ggplotGrob(Temp.logCH4NGS), size = "last"))
+dev.off()
+
+
 ```
+
+```{r modelling WTH using Turetsky equation}
+#Turetsky WTH model:
+# FCH4 = estimated maximum FCH4 at the optimal WTH * [exp -0.5 * (WTH - estimated optimal water table position for FCH4^2/width of the WT amplitude^2)]
+library(qpcR)
+BB1 <- BB1 %>% drop_na(WTH._mean)
+
+nlsfit.annualBB1.CH4.WTH <- nls(logCH4_mgC ~ a * exp(-0.5 * (((BB1$WTH._mean - b)^2)/(c^2))), data = BB1, start = list(a = 0.1, b = 0.1, c = 0.1))
+summary(nlsfit.annualBB1.CH4.WTH)
+
+nlsfit.annualBB1.CH4.WTH <- nls(CH4_mgC ~ a * exp(-0.5 * (((BB1$WTH._mean - b)^2)/(c^2))), data = BB1, start = list(a = -1, b = -1, c = -1))
+qpcR::RMSE(nlsfit.annualBB1.CH4.WTH, which = NULL)
+
+
+coefs.annualBB1.CH4.WTH <- coef(nlsfit.annualBB1.CH4.WTH)
+coefs.annualBB1.CH4.WTH
+
+a.1.CH4.WTH<- 4.656396
+b.1.CH4.WTH<- -7.030082
+c.1.CH4.WTH<- 15.803311 
+
+plot(BB1$WTH._mean, BB1$logCH4_mgC)
+lines(BB1$WTH._mean, coefs.annualBB1.CH4.WTH[["a"]]*exp(-0.5 * (((BB1$WTH._mean - coefs.annualBB1.CH4.WTH[["b"]])^2)/(coefs.annualBB1.CH4.WTH[["c"]]^2))))
+
+#BB2
+BB2 <- BB2 %>% drop_na(WTH._mean)
+
+nlsfit.annualBB2.CH4.WTH <- nls(logCH4_mgC ~ a * exp(-0.5 * (((BB2$WTH._mean - b)^2)/(c^2))), data = BB2, start = list(a = 0.1, b = 0.1, c = 0.1))
+
+nlsfit.annualBB2.CH4.WTH <- nls(CH4_mgC ~ a * exp(-0.5 * (((BB2$WTH._mean - b)^2)/(c^2))), data = BB2, start = list(a = -1, b = -1, c = -1))
+summary(nlsfit.annualBB2.CH4.WTH)
+coefs.annualBB2.CH4.WTH <- coef(nlsfit.annualBB2.CH4.WTH)
+coefs.annualBB2.CH4.WTH
+
+a.2.CH4.WTH <-4.424348
+b.2.CH4.WTH <--30.925333
+c.2.CH4.WTH <-49.287712 
+
+plot(BB2$WTH._mean, BB2$logCH4_mgC)
+lines(BB2$WTH._mean, coefs.annualBB2.CH4.WTH[["a"]]*exp(-0.5 * (((BB2$WTH._mean - coefs.annualBB2.CH4.WTH[["b"]])^2)/(coefs.annualBB2.CH4.WTH[["c"]]^2))))
+
+```
+
 
 __BB1__ 
 
-Having the TS * WTH interaction doesn't sig make the model better.
+```{r BB1 model}
+#####RUN THESE  WITH THE CH4 GPP CHUNK BELOW INSTEAD OF HERE!!
+TS.BB1.mod <- lm(formula = logCH4_mgC ~ TS.5_mean, data = BB1)
+WTH.BB1.mod <- lm(formula = logCH4_mgC ~ WTH._mean, data = BB1)
+model.2.both.BB1 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB1)
 
-```{r BB1 model reln between CH4 and Temp and WTH}
-model.1 <- lm(CH4mgC_RF_log ~ TS.5_mean, data = BB1)
-model.2 <- lm(CH4mgC_RF_log ~TS.5_mean + WTH._mean, data = BB1)
-model.3 <- lm(CH4mgC_RF_log ~TS.5_mean * WTH._mean, data = BB1)
-model.4 <- lm(CH4mgC_RF_log ~ TS.5_mean * poly(WTH._mean, 3, raw = TRUE) , data = BB1)  
-model.5 <- lm(CH4mgC_RF_log ~ TS.5_mean + I(WTH._mean ^3) *  WTH._mean, data = BB1) 
+model.sel(model.1.both.BB1, model.2.both.BB1, WTH.BB1.mod, TS.BB1.mod, model.BB1.full, mod.BB1.2 )
+plot(allEffects(model.5))
 
-#summary(model.2) #going to go with model 2
-anova(model.2, model.3)
+summary(mod.BB1.2)
+summary(model.6)
+anova(model.2, model.1)
+
+RMSE.BB1 <- sqrt(mean(residuals(model.2)^2))
+
+BB1.model <- BB1 %>% dplyr::select(logCH4_mgC, TS.5_mean, WTH._mean, TS.5_mean, GPP_f)
+
+#Stepwise regression
+full.model<-(lm(logCH4_mgC ~ ., data = BB1.model)
+
+step.model <- stepAIC(full.model, direction = "backward")
+stepAIC(full.model)
+
+leaps<-regsubsets(logCH4_mgC ~ TS.5_mean * WTH._mean + TS.5_mean * GPP_f, data=BB1,nbest=5)
+# view results
+summary(leaps)
+plot(leaps,scale="r2")
+
+
+
 ```
 
 
 __BB2__
 
-For BB2, including the interaction term does sig improve the models ability to predict CH4 fluxes. 
-```{r BB2 model reln between Reco and Temp and WTH}
-model.1 <- lm(logCH4_mgC ~ TS.5_mean, data = BB2)
-model.2 <- lm(logCH4_mgC ~TS.5_mean + WTH._mean, data = BB2)
-model.3 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB2)
-model.4 <- lm(logCH4_mgC ~ TS.5_mean * poly(WTH._mean, 3, raw = TRUE) , data = BB2)  # same as model 3? but R2 higher? 
-model.5 <- lm(logCH4_mgC ~ TS.5_mean + I(WTH._mean ^3) *  WTH._mean, data = BB2) 
 
-#summary(model.3) 
-anova(model.2, model.3)
+```{r BB2 model reln between CH4 and Temp and WTH}
+library(MASS)
+
+model.1.both.BB2 <- lm(logCH4_mgC  ~TS.5_mean + WTH._mean, data = BB2)
+model.2.both.BB2 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB2)
+
+model.3 <- lm(logCH4_mgC  ~TS.5_mean + WTH._mean, data = BB2.GS)
+model.4 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB2.GS)
+
+model.5 <- lm(logCH4_mgC  ~TS.5_mean + WTH._mean, data = BB2.NGS)
+model.6 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB2.NGS)
+#model.3 <- lm(logCH4_mgC  ~ TS.5_mean + poly(WTH._mean, 2, raw = TRUE) , data = BB2) 
+#model.4 <- lm(logCH4_mgC  ~ TS.5_mean * poly(WTH._mean, 2, raw = TRUE) , data = BB2) 
+#model.5 <- lm(logCH4_mgC  ~ TS.5_mean + poly(WTH._mean, 3, raw = TRUE) , data = BB2) 
+
+
+model.sel(model.1.both.BB2, model.2.both.BB2, WTH.BB2.mod, TS.BB2.mod )
+model.sel(model.1, model.2, model.3, model.4, model.5, model.6)
+plot(allEffects(model.5))
+
+summary(model.6) 
+anova(model.2, model.1)
+
+
+MASS::boxcox(model.6, lambda = seq(-1,1, length=10))
+
 ```
 
 
 - "When the water table is high, CH4 emissions are not regulated by WTD, particularly in vascular plant dominated wetlands... transport of CH4 from sediment to atmosphere via aerenchyma is inhibited by the inundation of AGB of plants" (REF) - from Zhu et al., 2020
 
 ```{r compare BB1 and BB2 CH4, figures-side, fig.show="hold", out.width="50%"}
-ggplot(BB1, aes(WTH._mean, CH4mgC_RF_log)) +
+ggplot(BB1, aes(WTH._mean, logCH4_mgC)) +
   geom_point(aes(color = TS.5_mean)) +
+        #geom_line(aes(x = WTH._mean, y = predictedlogCH4))+
   scale_color_gradient(low = "light blue", high = "dark blue")+
   #stat_smooth(method = lm, formula = y ~ x+c)+
   xlab("WTH (cm)")+
@@ -1082,150 +2555,143 @@ ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
   theme_bw()
 
 
-ggplot(BB2, aes(WTH._mean, CH4mgC_RF_log) ) +
-  geom_point(aes(color = TS.5_mean)) +
-  scale_color_gradient(low = "light blue", high = "dark blue")+
+(CH4.model2 <- BB2  %>%
+  ggplot(., aes(TS.5_mean, logCH4_mgC)) +
+  geom_point(aes(color = WTH._mean)) +
+      #geom_smooth(aes(x = WTH._mean, y = predictedlogCH4))+
+          #geom_smooth(aes(x = WTH._mean, y = logCH4_mgC))+
+  scale_color_gradient(low = "light blue", high = "dark blue",  limits = c(-40,20))+
+  #stat_function(fun=function(x) a.BB2*exp(b.BB2*x))+
+    stat_smooth(method = "lm", se = FALSE, size = 0.5, color = "black")+
+             scale_y_continuous(limits = c(0,5))+
+  #stat_smooth(method = 'lm', formula = y ~ x)+
+  xlab("Soil temperature")+
+ylab(bquote('lnFCH4 (mg C' ~m^-2~ day^-1*')'))+
+  ggtitle("a")+
+  theme_bw()+
+    theme(axis.text.x = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 12)))
+
+(CH4.model1 <- BB1 %>% filter(logCH4_mgC > 0) %>%
+  ggplot(., aes(TS.5_mean, logCH4_mgC) ) +
+  geom_point(aes(color = WTH._mean)) +
+    geom_smooth(method = "lm",se = FALSE, size = 0.5, colour = "black")+
+      #geom_smooth(aes(x = WTH._mean, y = predictedlogCH4))+
+          #geom_smooth(aes(x = WTH._mean, y = logCH4_mgC))+
+  scale_color_gradient(low = "light blue", high = "dark blue", ,  limits = c(-40,20))+
+  #stat_function(fun=function(x) a.BB1*exp(b.BB1*x))+
+         scale_x_continuous(limits = c(0,20))+
+  #stat_smooth(method = 'lm', formula = y ~ x)+
+  xlab("Soil temperature")+
+ylab(bquote('lnFCH4 (mg C' ~m^-2~ day^-1*')'))+
+  ggtitle("b")+
+  theme_bw() +
+    theme(axis.text.x = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 12)))
+
+(CH4.model3 <- Flux.Env.Ngf %>% filter(logCH4_mgC > 0) %>%
+  ggplot(., aes(WTH._mean, TS.5_mean) ) +
+  geom_point(aes(color = logCH4_mgC, size = , alpha  = 0.5)) +
+  #scale_color_gradient(low = "yellow", high = "red")+
+    scale_x_continuous(limits = c(-10,10))+
+        scale_y_continuous(limits = c(0,20))+
   #stat_smooth(method = 'lm', formula = y ~ x)+
   xlab("WTH (cm)")+
-ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-  ggtitle("BB2")+
-  theme_bw()
+ylab('Soil temperature')+
+  ggtitle("b")+
+  theme_bw() +
+    theme())
+
+ch4flux.test <- Flux.Env.Ngf %>% select(Site, CH4mgC_f,CH4_mgC, logCH4_mgC, TS.5_mean, WTH._mean) %>% filter(CH4mgC_f >0)
+library(scatterplot3d)
+
+with(ch4flux.test, scatterplot3d(TS.5_mean, WTH._mean, CH4mgC_f, color = as.numeric(Site), pch = 25))
+
+
+ch4flux.test.BB1 <- ch4flux.test %>% filter(Site == "1" & logCH4_mgC >0)
+ch4flux.test.BB2 <- ch4flux.test %>% filter(Site == "2"& logCH4_mgC >0)
+
+
+p <- ggplot(ch4flux.test, aes(TS.5_mean, CH4_mgC, group = Site))
+p + geom_point(aes(color = Site)) + facet_wrap(~ cut_number(WTH._mean, 9)) +scale_color_jco()+theme_bw()
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4tempWTH.tiff", width = 6, height = 4, device='tiff', dpi=300)
+
+
+
+ggarrange(CH4.model2, CH4.model1, nrow = 1, ncol = 2,common.legend = TRUE, widths = c(1,1))
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4tempWTH.tiff", width = 6, height = 4, device='tiff', dpi=300)
+
+
+# Turetsky WTH CH4 response:
+Pred.ch4 <- max(BB1$logCH4_mgC) * exp(-0.5 * (BB1$WTH._mean))
 ```
 
-```{r BB2 surface plots with CH4, warning=FALSE, echo = FALSE, message = FALSE}
-#using tutorial from: http://www.wekaleamstudios.co.uk/posts/creating-surface-plots/#9mzSsIgKCZg
+```{r}
+#BB1
+g<- expand.grid(TS.5_mean = seq(0, 25, 1), WTH._mean = seq(-20, 15, 2))
+g$BB1 <- (1.79 + 0.14*(g$TS.5_mean) + 0.04*(g$WTH._mean) - 0.01*(g$TS.5_mean*g$WTH._mean))
+wireframe(BB1~TS.5_mean*WTH._mean, data = g,
+          scales = list(arrows = FALSE),
+          drape = TRUE, colorkey = TRUE,
+          screen = list(z = 70, x = -60))
 
-library(geoR)
-data("elevation")
+(WvBB1<- wireframe(BB1~WTH._mean*TS.5_mean, data = g,
+          scales = list(arrows = FALSE),
+          drape = TRUE, colorkey = TRUE,
+                     at=do.breaks(c(0,10),10),
+          auto.key = TRUE,
+          screen = list(z = 40, x = -50),
+          xlab = list("WTH", rot = 30),
+           ylab = list("Soil temperature", rot = -30),
+          zlab = list("lnCH4", rot = 90),
+          zlim = c(0, 10),
+          par.settings = list(axis.line = list(col = 'transparent')),
+          panel = function(...)
+    {
+      panel.wireframe(...)
+      grid.text("CA-DBB", 0, 0.2, default.units = "native")
+    }))
 
-BB2$CH4mgC_pred <- 3.293 + (0.047 * BB2$TS.5_mean) + (0.005 * BB2$WTH._mean) - (-0.001 * (BB2$TS.5_mean * BB2$WTH._mean))
-
-BB2.surface <- BB2 %>% select(TS.5_mean, WTH._mean, CH4mgC_f_RF)
-
-BB2.loess <- loess(CH4mgC_f_RF~TS.5_mean*WTH._mean, data = BB2.surface)
-
-BB2.fit <- expand.grid(TS.5_mean = seq(0, 25, 1), WTH._mean = seq(-40, 15, 5))
-#BB2.fit[1:20,]
-z = predict(BB2.loess, newdata = BB2.fit)
-BB2.fit$CH4mgC <- as.numeric(z)
-
-BB2.surf <- wireframe(CH4mgC~TS.5_mean*WTH._mean, data = BB2.fit,
-          drape = TRUE,
-  colorkey = TRUE,
-  scales = list( arrows = FALSE),
-   zlab = list("CH4 mgC", rot = 90),
-  ylab = list("WTH", rot = 45),
-  main = ("BB2"),
-   screen = list(z = 160, x = -60))
-```
-
-```{r BB1 surface plots with CH4, warning = FALSE, echo = FALSE, message = FALSE}
-#using tutorial from: http://www.wekaleamstudios.co.uk/posts/creating-surface-plots/#9mzSsIgKCZg
-
-#summary(lm(CH4mgC_RF_log ~TS.5_mean + WTH._mean, data = BB1))
-
-BB1$CH4mgC_pred <- 3.139 + (0.077 * BB1$TS.5_mean) - (0.028 * BB1$WTH._mean)
-
-BB1.surface <- BB1 %>% select(TS.5_mean, WTH._mean, CH4mgC_f_RF)
-
-BB1.loess <- loess(CH4mgC_f_RF~TS.5_mean*WTH._mean, data = BB1.surface)
-
-BB1.fit <- expand.grid(TS.5_mean = seq(0, 25, 1), WTH._mean = seq(-40, 15, 5))
-#BB1.fit[1:20,]
-z = predict(BB1.loess, newdata = BB1.fit)
-BB1.fit$CH4mgC <- as.numeric(z)
-
-BB1.surf <- wireframe(CH4mgC~TS.5_mean*WTH._mean, data = BB1.fit,
-          drape = TRUE,
-  colorkey = TRUE,
-  scales = list( arrows = FALSE),
-  zlab = list("CH4 mgC", rot = 90),
-  ylab = list("WTH", rot = 45),
-  main = "BB1",
-   screen = list(z = 160, x = -60))
-
-###Look into 3D plot for other surface plotting options
-```
+tiff(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/BB1surface.tiff", width =800, height = 500) # The height of the plot in inches
+WvBB1
+dev.off()
 
 
-```{r both surface plots, figures-side, fig.show="hold", out.width="50%"}
-BB1.surf
+#BB2
+h<- expand.grid(TS.5_mean = seq(0, 25, 1), WTH._mean = seq(-20, 15, 2))
+h$BB2 <- (3.30 + 0.03*(h$TS.5_mean) - 0.02*(h$WTH._mean))
+(wireframe(BB2~TS.5_mean*WTH._mean, data = h,
+          scales = list(arrows = FALSE),
+          #drape = TRUE, colorkey = TRUE,
+          screen = list(z = 70, x = -60)))
 
-BB2.surf
-```
+(WvBB2<- wireframe(BB2~WTH._mean*TS.5_mean, data = h,
+          scales = list(arrows = FALSE),
+          drape = TRUE, colorkey = TRUE,
+           at=do.breaks(c(0,10),10),
+          auto.key = TRUE,
+          screen = list(z = 40, x = -50),
+          xlab = list("WTH", rot = 30),
+           ylab = list("Soil temperature", rot = -30),
+          zlab = list("lnCH4", rot = 90),
+          zlim = c(0, 10),
+          par.settings = list(axis.line = list(col = 'transparent')),
+          panel = function(...)
+    {
+      panel.wireframe(...)
+      grid.text("CA-DB2", 0, 0.2, default.units = "native")
+    }))
 
-```{r CH4 model testing - not using, eval=FALSE, include=FALSE}
-#library(AER)
-
-# fit a simple linear model
-#linear_model<- lm(logCH4_mgC ~ TS.5_mean*WTH._mean, data = BB1)
-#summary(linear_model)
-
-# fit the quadratic Model
-#quadratic_model.1 <- glm(logCH4_mgC~ TS.5_mean + I(TS.5_mean^2) + WTH._mean, data = BB1)
-#quadratic_model.2 <- glm(logCH4_mgC~ TS.5_mean + I(TS.5_mean^2)+ I(TS.5_mean^3) + WTH._mean, data = BB1) #this one is better, but can it be better? When to include extra variables? 
-#quadratic_model.3 <- glm(logCH4_mgC ~ poly(TS.5_mean, 3, raw = TRUE) + WTH._mean, data = BB1) #this is the same as model 2
-
-#summ(quadratic_model.2)
-
-# obtain the model summary
-#coeftest(quadratic_model.2, vcov. = vcovHC, type = "HC1")
-
-# draw a scatterplot of the observations for income and test score
-#plot(BB1$TS.5_mean, BB1$logCH4_mgC,
- #    col  = "steelblue",
-  #   pch = 20,
-   #  xlab = "TS.5_mean",
-    # ylab = "logCH4_mgC",
-    # main = "Estimated Linear and Quadratic Regression Functions")
-
-# add a linear function to the plot
-#abline(linear_model, col = "black", lwd = 2)
-
-# add quatratic function to the plot
-#order_id <- order(BB1$TS.5_mean)
-
-#lines(x = BB1$TS.5_mean[order_id], 
- #     y = fitted(quadratic_model.2)[order_id],
-  #    col = "red", 
-   #   lwd = 2) 
-
-### finished here 15th feb
-#BB1.model$CH4.pred <- 4.88 - .24*(BB1.model$TS.5_mean) + 0.013*(I(BB1.model$TS.5_mean^2)) - 0.036*(BB1.model$WTH)
-#plot(BB1.model$CH4.pred, BB1.model$logCH4_mgC)
-#lm.1 <- lm(CH4.pred~logCH4_mgC, data = BB1.model)
-#summary(lm.1)
-
-#USE THIS 30/11/2020#
-#ggplot(BB1, aes(TS.5_mean, logCH4_mgC))+geom_point() +
- # geom_smooth(method = "gam", formula = y ~ x + I(x^2))
-
-#ggplot(BB1.model, aes(TS.5_mean, logCH4_mgC))+geom_point() +
- #    geom_line(aes(y = CH4.pred), size = 1)
-#quadratic_model.3 <- glm(logCH4_mgC ~ poly(TS.5_mean, 3, raw = TRUE) + WTH._mean, data = BB1) #this is the same as model 2
+tiff(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/BB2surface.tiff", width =800, height = 500) # The height of the plot in inches
+WvBB2
+dev.off()
 
 
-#set.seed(123)
-#training.samples.ch4 <- BB1$CH4_mgC %>%
- # createDataPartition(p = 0.8, list = FALSE)
-#train.data2.ch4  <- BB1[training.samples2, ]
-#test.data2.ch4 <- BB1[-training.samples2, ]
-
-# Make predictions
-#predictions <- quadratic_model.3 %>% predict(test.data2.ch4)
-
-# Model performance
-#data.frame(
- # RMSE = RMSE(predictions, test.data2.ch4$CH4_mgC),
-  #R2 = R2(predictions, test.data2.ch4$CH4_mgC)
-)
-
-#I'm not plotting the correct regression line here...
-#ggplot(train.data2.ch4, aes(TS.5_mean, CH4_mgC) ) +
- # geom_point(aes(color = WTH._mean)) +
-  #scale_color_gradient(low = "light blue", high = "dark blue")+
-  #stat_smooth(method = glm, formula = y ~ x + I(x^3) + WTH._mean)+
-  #theme_bw()
 ```
 
 
@@ -1241,54 +2707,706 @@ __CH4 emissions and C sequestration__
 - Below both sites are plotted differently and it looks like there are differences between their relationships.
 
 ```{r CH4 emissions and C sequestration}
-(CH4.Cseq.p <-Flux.Env %>% 
-  ggplot(., aes(NEE_f, CH4mgC_RF_log, color = Site)) +
-  geom_point()+
-   geom_smooth(method = "glm", aes(colour = Site)) +
-  scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
-    ylab(bquote('Daily' ~logCH[4]~ 'flux (g C' ~m^-2~ day^-1*')'))+
-    scale_color_aaas()+
-  theme_bw())
+Flux.Env.GF.NGF <- right_join(Flux.Env.Ngf, Flux.Env)
 ```
 
-
+Sequestering more CO2  --> higher CH4 fluxes at BB2 - potentially due to labile substrate input?
 
 ```{r CH4 emissions and C sequestration BB1 and BB2 sep, figures-side, fig.show="hold", out.width="50%"}
-CH4.GPPBB1 <- lm(CH4mgC_RF_log~NEE_f * TS.5_mean * WTH._mean, BB1)
+
+Flux.Env.GF.NGF <- right_join(Flux.Env.Ngf, Flux.Env)
+ tmp <- Flux.Env.GF.NGF %>% dplyr::select(Site, GPPgC_f) %>% filter(Site=="CA-DB2")
+
+BB1GFNGF <- Flux.Env.GF.NGF %>% filter(Site == "CA-DBB") %>% mutate (GPPgC_f = GPPgC_f + 0.6) #%>% mutate(logGPPgC_f = log(GPPgC_f))
+BB2GFNGF <- Flux.Env.GF.NGF %>% filter(Site == "CA-DB2") %>% mutate (GPPgC_f = GPPgC_f + 0.75)
+BB1GFNGF.GS <- BB1GFNGF %>% filter(Period =="GS")
+BB2GFNGF.GS <- BB2GFNGF %>% filter(Period =="GS")
+BB1GFNGF.NGS <- BB1GFNGF %>% filter(Period =="NGS")
+BB2GFNGF.NGS <- BB2GFNGF %>% filter(Period =="NGS")
+
+CH4GPP <- full_join(BB1GFNGF, BB2GFNGF)
+
+#Annual
+(CH4.Cseq.p <-CH4GPP %>% 
+       #filter(logCH4_mgC > 2) %>%
+  ggplot(., aes(GPPgC_f, logCH4_mgC, color = Site)) +
+  geom_point()+
+   #geom_smooth(method = "lm", aes(colour = Site)) +
+    #scale_x_log10()+
+  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
+  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('' ~lnCH[4]~ ' (g C' ~m^-2~ day^-1*')'))+
+    #scale_x_continuous(limits = c(- 2))+
+    scale_color_aaas()+
+    ggtitle("Annual")+
+  theme_bw()+ 
+    theme(axis.title = element_text(size = 15),
+          axis.text = element_text(size = 14)))
+
+CH4GPP.mod <- aov(logCH4_mgC~log(GPPgC_f)*Site, CH4GPP)
+summary(CH4GPP.mod)
+```
+
+```{r BB1 models with GPP}
+options(na.action = "na.omit")
+TS.BB1.mod <- lm(formula = logCH4_mgC ~ TS.5_mean, data = BB1GFNGF)
+WTH.BB1.mod <- lm(formula = logCH4_mgC ~ WTH._mean, data = BB1GFNGF)
+CH4.GPP.BB1 <- lm(logCH4_mgC~GPPgC_f, data = BB1GFNGF)
+
+model.2.both.BB1 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB1GFNGF)
+model.3.both.BB1 <- lm(logCH4_mgC ~TS.5_mean + WTH._mean, data = BB1GFNGF)
+
+#BB1GFNGF.allmod <- BB1GFNGF %>% dplyr::select(logCH4_mgC, TS.5_mean, WTH._mean, GPPgC_f)
+
+#BB1.modAll <- lm(logCH4_mgC ~ ., data = BB1GFNGF.allmod)
+
+summary(TS.BB1.mod)
+
+FullCH4.BB1 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean * WTH._mean, data = BB1GFNGF)
+#CH4.GPP.BB1.2 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean + WTH._mean, data = BB1GFNGF)
+#CH4.GPP.BB1.2 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean, data = BB1GFNGF)
+
+allEffects(FullCH4.BB1)
+
+mod.2 <- lm(logCH4_mgC~TS.5_mean + (TS.5_mean:WTH._mean), data = BB1GFNGF)
+summary(mod.2)
+
+
+m<- ols_step_best_subset(FullCH4.BB1)
+n<- ols_step_all_possible(FullCH4.BB1, details=TRUE)
+
+try <- lm(logCH4_mgC~log(GPPgC_f)+WTH._mean +log(GPPgC_f):TS.5_mean, data = BB1GFNGF)
+summary(try)
+      
+
+step <- stepAIC(FullCH4.BB1, direction = "backward", trace = FALSE)
+step$anova
+
+model.sel(TS.BB1.mod, WTH.BB1.mod, CH4.GPP.BB1, model.2.both.BB1, model.3.both.BB1)
+summary(model.3.both.BB1)
+
+CH4GPP.BB2 <- lm(logCH4_mgC~log(GPPgC_f), data = BB2GFNGF)
+
+summary(CH4GPP.BB2)
+
+CH4GPP.BB2.1 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean, data = BB2GFNGF)
+summary(CH4GPP.BB2.1)
+
 #summary(CH4.GPPBB1)
-
-(CH4.Cseq.p1 <- ggplot(BB1, aes(NEE_f, CH4mgC_RF_log)) +
-  geom_point()+
-   #geom_smooth(method = "lm", aes(colour = Site)) +
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
-    ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-    scale_color_aaas()+
-  theme_bw())
-
-CH4.GPPBB2 <- lm(CH4mgC_RF_log~NEE_f *TS.5_mean*WTH._mean, BB2)
-#summary(CH4.GPPBB2)
-
-(CH4.Cseq.p1 <- ggplot(BB2, aes(NEE_f, CH4mgC_RF_log)) +
-  geom_point()+
-   #geom_smooth(method = "lm", aes(colour = Site)) +
-  #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab(bquote('NEE (g C' ~m^-2~ day^-1*')'))+
-    ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-    scale_color_aaas()+
+(CH4.Cseq.pBB1 <-BB1GFNGF %>% 
+  ggplot(., aes(GPPgC_f, logCH4_mgC)) +
+  geom_point(aes(color = TS.5_mean))+
+    #geom_smooth(method = "lm")+
+      scale_color_gradient(low = "yellow", high = "red", limits = c(0, 25))+
+        #scale_y_continuous(limits = c(2,5.5))+
+            scale_x_continuous(limits = c(0,6))+
+    #scale_x_log10()+
+  xlab(bquote('GPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('' ~lnFCH[4]~ ' (g C' ~m^-2~ day^-1*')'))+
+    ggtitle("BB1")+
   theme_bw())
 ```
 
+```{r BB2 MODELS WITH GPP}
+library(olsrr)
+
+TS.BB2.mod <- lm(formula = logCH4_mgC ~ TS.5_mean, data = BB2GFNGF)
+WTH.BB2.mod <- lm(formula = logCH4_mgC ~ WTH._mean, data = BB2GFNGF)
+CH4.GPP.BB2 <- lm(logCH4_mgC~log(GPPgC_f), data = BB2GFNGF)
+
+model.2.both.BB2 <- lm(logCH4_mgC ~TS.5_mean * WTH._mean, data = BB2GFNGF)
+model.3.both.BB2 <- lm(logCH4_mgC ~TS.5_mean + WTH._mean + log(GPPgC_f), data = BB2GFNGF)
+model.3.both.BB2$coefficients
+
+#model.3 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean, data = BB2GFNGF)
+#model.4 <- lm(logCH4_mgC~log(GPPgC_f)+TS.5_mean, data = BB2GFNGF)
+#model.3.both.BB2 <- lm(logCH4_mgC ~TS.5_mean + WTH._mean, data = BB2GFNGF)
+
+FullCH4.BB2 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean * WTH._mean, data = BB2GFNGF)
+#FullCH4.BB2.2 <- lm(logCH4_mgC~log(GPPgC_f)*TS.5_mean + WTH._mean, data = BB2GFNGF)
+
+summary(model.3.both.BB2)
+
+model.sel(TS.BB2.mod, WTH.BB2.mod, CH4.GPP.BB2, model.2.both.BB2, model.3.both.BB2)
+
+j <- ols_step_all_possible(FullCH4.BB2, details=TRUE)
+
+k <- ols_step_best_subset(FullCH4.BB2, details = TRUE)
+step<-stepAIC(FullCH4.BB2)
+step$coefficients
+summary(step)
+model.sel(model.2.both.BB2, model.3.both.BB2, FullCH4.BB2, FullCH4.BB2.2)
+
+ols_coll_diag(FullCH4.BB2)
 
 
-```{r ch4 hysteresis with soil temp}
-(CH4.soilT.hys <- ggplot(Flux.Env, aes(TS.5_mean, CH4mgC_RF_log)) +
-  geom_point(aes(shape = Period, color = Site), size = 3)+
-   #geom_smooth(method = "lm", aes(colour = Site)) +
+#summary(CH4.GPPBB2)
+
+
+CH4GPP.BB1.GS <- lm(logCH4_mgC~log(GPPgC_f), data = BB1GFNGF.GS)
+plot(CH4GPP.BB1.GS)
+boxcox(CH4GPP.BB1.GS)
+summary(CH4GPP.BB1.GS)
+
+CH4GPP.BB2.GS <- lm(logCH4_mgC~log(GPPgC_f), data = BB2GFNGF.GS)
+plot(CH4GPP.BB2.GS)
+boxcox(CH4GPP.BB2.GS)
+summary(CH4GPP.BB2.GS)
+
+CH4GPP.BB1.NGS <- lm(logCH4_mgC~log(GPPgC_f), data = BB1GFNGF.NGS)
+plot(CH4GPP.BB1.NGS)
+boxcox(CH4GPP.BB1.NGS)
+summary(CH4GPP.BB1.NGS)
+
+CH4GPP.BB2.NGS <- lm(logCH4_mgC~log(GPPgC_f), data = BB2GFNGF.NGS)
+plot(CH4GPP.BB2.NGS)
+boxcox(CH4GPP.BB2.NGS)
+summary(CH4GPP.BB2.NGS)
+
+ggarrange(CH4.Cseq.pBB1, CH4.Cseq.pBB2,  common.legend = TRUE)
+
+CH4GPP.temp <- aov(logCH4_mgC ~ GPPgC_f * TS.5_mean * WTH._mean*Site, data = CH4GPP)
+summary(CH4GPP.temp)
+```
+
+
+### FACET PLOTS FOR SINGLE RESPONSE VARIABLE
+```{r CH4}
+# Temperature response 
+(Temp.logCH4<- Flux.Env.Ngf %>%  
+         #filter(logCH4_mgC > 2) %>%
+  ggplot(., aes(TS.5_mean,logCH4_mgC, color= Site)) +
+           #scale_shape_manual(values = c(1,15))+
+   scale_color_jco()+
+     ylab(bquote('lnFCH4(mg C' ~m^-2~ day^-1*')'))+
+   xlab('5cm soil temperature (°C)')+
+  geom_point(aes(), size = 1) +
+   geom_smooth(method = "lm", se = FALSE, size = 0.5) +
+  #stat_function(fun=function(x) a.BB1*exp(b.BB1*x), color = "#EFC000FF")+
+  #stat_function(fun=function(x) a.BB2*exp(b.BB2*x), color ="#0073C2FF" )+
+    ggtitle("a")+
+  theme_bw()+
+   theme(legend.position = "none",
+         axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_blank()))
+
+# Water table response
+func.bb1 <- function(x) a.1.CH4.WTH*exp(-0.5 * ((x - b.1.CH4.WTH)^2)/((c.1.CH4.WTH)^2))
+func.bb2 <- function(x) a.2.CH4.WTH*exp(-0.5 * ((x - b.2.CH4.WTH)^2)/((c.2.CH4.WTH)^2))
+
+(WTH.logCH4<- Flux.Env.Ngf %>% #don't need to log transform CH4? 
+  #filter(WTH._mean > -20.0) %>%
+         #logCH4_mgC > 2) %>%
+  ggplot(., aes(WTH._mean,logCH4_mgC,  color= Site)) +
+        #scale_shape_manual(values = c(1,15))+
+          scale_color_jco()+
+     ylab(bquote('log'~CH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
+   xlab('WTH (cm)')+
+  geom_point(aes(), size = 1) +
+    stat_function(fun=func.bb1, xlim = c(-13, 13), color ="#EFC000FF") +
+        stat_function(fun=func.bb2, color = "#0073C2FF") +
+    ggtitle("b") +
+  theme_bw()+
+    theme(legend.position = "none",
+          axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 14),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank()))
+
+
+#GPP
+(CH4.Cseq.p <-CH4GPP %>% 
+       #filter(logCH4_mgC > 2) %>%
+  ggplot(., aes(log(GPPgC_f), logCH4_mgC, color = Site)) +
+  geom_point(aes(), size = 1)+
+    scale_x_continuous(limits = c(-1,2))+
+    #scale_shape_manual(values = c(1,15))+
+   geom_smooth(method = "lm", se = FALSE, aes(colour = Site), size = 0.5) +
+    #scale_x_log10()+
   #scale_colour_manual(values = c("#0072B2", "#D55E00")) +
-  xlab('Soil temperature')+
-    ylab(bquote('Daily' ~logCH[4]~ 'flux (mg C' ~m^-2~ day^-1*')'))+
-    scale_color_aaas()+
+  xlab(bquote('lnGPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('' ~lnCH[4]~ ' (g C' ~m^-2~ day^-1*')'))+
+    #scale_x_continuous(limits = c(- 2))+
+    scale_color_jco()+
+    ggtitle("c")+
+  theme_bw()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 14),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          legend.text = element_text(size = 13),
+          legend.title = element_text (size = 13)))
+
+(ch4.singleresponse <- ggarrange(Temp.logCH4,WTH.logCH4,CH4.Cseq.p, ncol = 3, common.legend = TRUE, widths = c(1.05, 1, 1), align = "h"))
+annotate_figure(ch4.singleresponse, left = text_grob(bquote('lnFCH4 (mg C' ~m^-2~ day^-1*')'), rot =90, size = 14))
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4SRvars.tiff", width = 7.75, height = 4, device='tiff', dpi=300)
+
+```
+
+```{r CO2}
+#Temperature response
+
+
+BB1.int <- -2
+BB2.int <- -.9
+BB1.coef <- 0.12
+BB2.coef <- 0.09
+
+
+##LN RECO
+(ER.TS5.P <- Flux.Env %>%
+  #filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, lnRECO, color= Site)) +
+       scale_color_jco()+
+   xlab('5cm Soil temperature (°C)')+
+   ylab(bquote('lnRECO (g C' ~m^-2~ day^-1*')'))+
+    geom_smooth(method = "lm", se = FALSE, size = 0.5) +
+   #scale_y_continuous(limits = c(0,3))+
+  geom_point()+
+  #stat_function(fun=function(x) BB1.int+(BB1.coef*x), colour = "#EFC000FF")+
+  #stat_function(fun=function(x) BB2.int+(BB2.coef*x), colour = "#0073C2FF")+
+    ggtitle("a")+
+  theme_bw()+
+   theme(legend.position=c(.15, 0.85),
+          axis.text = element_text(size = 14),
+          axis.title = element_text(size = 15)))#,
+         #axis.title.y = element_blank(),
+         #axis.text.y = element_blank()))
+
+ER.TS5.P
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/lNRECOtemp.tiff", width = 4, height = 4, device='tiff', dpi=300)
+
+#Water table response
+(ER.WTH.P <- Flux.Env %>%
+ #filter(WTH._mean > -20.0) %>%
+  ggplot(., aes(WTH._mean, lnRECO, color= Site)) +
+       scale_color_jco()+
+   xlab('WTH(cm)')+
+   ylab(bquote('lnRECO (g C' ~m^-2~ day^-1*')'))+
+       #scale_y_continuous(limits = c(0,3))+
+  geom_point()+
+   geom_smooth(method = "lm", se = FALSE, size = 0.5) + 
+    ggtitle("b")+
+  theme_bw()+
+   theme(legend.position = "none", axis.text = element_text(size = 14),
+          axis.title = element_text(size = 15)))#,
+        #axis.title.y = element_blank(),
+         #axis.text.y = element_blank()))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/lnCO2WTH.tiff", width = 4, height = 4, device='tiff', dpi=300)
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CO2WTH.tiff", width = 4, height = 4, device='tiff', dpi=300)
+
+
+(RECO.SR <- ggarrange(ER.TS5.P, ER.WTH.P, nrow = 1, ncol = 2, common.legend = TRUE, widths = c(1, 1), align = "h"))
+#annotate_figure(RECO.SR, left = text_grob(bquote('lnRECO (g C' ~m^-2~ day^-1*')'), rot =90))
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CO2SRvars.tiff", width = 6, height = 3, device='tiff', dpi=300)
+
+
+(GPP.TS5.P <- Flux.Env %>%
+  #filter(TS.5_mean > '0') %>%
+  ggplot(., aes(TS.5_mean, GPP_f, color= Site)) +
+       scale_color_aaas()+
+   xlab('5cm Soil temperature (°C)')+
+   #ylab(bquote('RECO (g C' ~m^-2~ day^-1*')'))+
+   scale_y_continuous(limits = c(0,3))+
+  geom_point()+
+  #stat_function(fun=function(x) a.annBB1*exp(b.annBB1*x), colour = "red")+
+  #stat_function(fun=function(x) a.annBB2*exp(b.annBB2*x), colour = "darkblue")+
+    ggtitle("a")+
+  theme_bw()+
+   theme(legend.position = "none",
+          axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_blank()))
+
+(GPP.WTH.P <- Flux.Env %>%
+ filter(WTH._mean > -20.0) %>%
+  ggplot(., aes(WTH._mean, GPP_f, color= Site)) +
+       scale_color_aaas()+
+   xlab('WTH(cm)')+
+   ylab(bquote('Ecosystem respiration (g C' ~m^-2~ day^-1*')'))+
+       scale_y_continuous(limits = c(0,3))+
+  geom_point()+
+   #geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("b")+
+  theme_bw()+
+   theme(legend.position = "none", axis.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+         axis.title.y = element_blank(),
+         axis.text.y = element_blank()))
+
+```
+
+```{r calculate missing values}
+missing.BB2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_L2.csv') %>% dplyr::select(DATE, co2_flux, ch4_flux)
+missing.BB2$Timestamp <- as.POSIXct(missing.BB2$DATE, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+missing.BB2 <- missing.BB2 %>% filter(Timestamp >= '2020-01-01 00:00:00' & Timestamp < '2021-01-01 00:00:00')
+
+BB2.NAs.co2 <- na.omit(missing.BB2$co2_flux)
+
+BB2.obs <- 17568
+BB2.noNAS <- 11611
+co2_missing <- ((BB2.obs-BB2.noNAS)/BB2.obs)*100
+
+BB2.NAs.ch4 <- na.omit(missing.BB2$ch4_flux)
+
+BB2.noNAS.ch4 <- 9238
+ch4_missing <- ((BB2.obs-BB2.noNAS.ch4)/BB2.obs)*100
+
+
+missing.BB1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_L2.csv')%>% dplyr::select(DATE, co2_flux, ch4_flux)
+
+missing.BB1$Timestamp <- as.POSIXct(missing.BB1$DATE, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+missing.BB1 <- missing.BB1 %>% filter(Timestamp >= '2020-01-01 00:00:00' & Timestamp < '2021-01-01 00:00:00')
+
+BB1.NAs.co2 <- na.omit(missing.BB1$co2_flux)
+
+BB1.obs <- 17568
+BB1.noNAS <- 10150
+co2_missing.1 <- ((BB1.obs-BB1.noNAS)/BB1.obs)*100
+
+BB1.NAs.ch4 <- na.omit(missing.BB1$ch4_flux)
+
+BB1.noNAS.ch4 <- 7939
+ch4_missing.1 <- ((BB1.obs-BB1.noNAS.ch4)/BB1.obs)*100
+
+```
+
+```{r check for colinearity}
+colin.subset <- Flux.Env.GF.NGF %>% dplyr::select(logCH4_mgC, WTH._mean, TS.5_mean, GPP_f)
+colin.subset$GPP_f <- log(colin.subset$GPP_f)
+colin.m <- lm(logCH4_mgC~., colin.subset)
+vif(colin.m)
+cor(colin.subset, use = "complete.obs")
+```
+
+```{r calculate energy balace closure}
+###BB2
+EB.BB2 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2019-Burns\ Bog\ 2/Flux-tower/flux_data/BB2_L3.csv') %>% dplyr::select(DATE, H, LE, NR, G)
+EB.BB2$Timestamp <- as.POSIXct(EB.BB2$DATE, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+EB.BB2 <- EB.BB2 %>% filter(Timestamp >= '2020-01-01 00:00:00' & Timestamp < '2021-01-01 00:00:00')
+EB.BB2$jday <- yday(EB.BB2$Timestamp)
+
+
+EB.BB2.daily <- EB.BB2 %>% dplyr::select(jday, H, LE, NR, G) %>%
+  ddply(c("jday"), summarise,
+      H = mean(H, na.rm = TRUE),
+      LE = mean(LE, na.rm = TRUE),
+      NR = mean(NR, na.rm = TRUE),
+      G = mean(G, na.rm = TRUE))
+
+
+Ebal_denominator <- EB.BB2$NR-EB.BB2$G
+
+Ebal_numerator <- EB.BB2$H+EB.BB2$LE
+
+plot(x = Ebal_denominator, y = Ebal_numerator, xlab="Rn-G",ylab="LE+H")
+
+
+# calculate EB using slope to fit
+a<-round(coef(lm(Ebal_numerator~Ebal_denominator))[2],digits=2) #coef(lm(y~x))[2] is the slope of the regression
+b<-round(coef(lm(Ebal_numerator~Ebal_denominator))[1],digits=2)   
+r2<-round(summary(lm(Ebal_numerator~Ebal_denominator))$ r.squared,digits=2)
+
+lm_eq<-paste0("y=",a,"x",ifelse(b>0,"+",""),b)
+R2<-bquote(R^2 == .(r2)) 
+
+plot(x = Ebal_denominator, y = Ebal_numerator, xlab="Rn-G",ylab="LE+H")
+abline(0,1)
+abline(lm(Ebal_numerator~Ebal_denominator),col='grey',lty=2)
+mtext( lm_eq,side=3,line=-2,at=200,cex=0.9)
+mtext(R2,side=3,line=-3,at=200,cex=0.9)
+
+
+Ebal_denominator.daily <- EB.BB2.daily$NR-EB.BB2.daily$G
+
+Ebal_numerator.daily <- EB.BB2.daily$H+EB.BB2.daily$LE
+
+plot(x = Ebal_denominator.daily, y = Ebal_numerator.daily, xlab="Rn-G",ylab="LE+H")
+
+
+# calculate EB using slope to fit DAILY
+a<-round(coef(lm(Ebal_numerator.daily~Ebal_denominator.daily))[2],digits=2) #coef(lm(y~x))[2] is the slope of the regression
+b<-round(coef(lm(Ebal_numerator.daily~Ebal_denominator.daily))[1],digits=2)   
+r2<-round(summary(lm(Ebal_numerator.daily~Ebal_denominator.daily))$ r.squared,digits=2)
+
+lm_eq<-paste0("y=",a,"x",ifelse(b>0,"+",""),b)
+R2<-bquote(R^2 == .(r2)) 
+
+plot(x = Ebal_denominator.daily, y = Ebal_numerator.daily, xlab="Rn-G",ylab="LE+H")
+#abline(0,1)
+abline(lm(Ebal_numerator.daily~Ebal_denominator.daily),col='grey',lty=2)
+mtext( lm_eq,side=3,line=-2,at=200,cex=0.9)
+mtext(R2,side=3,line=-3,at=200,cex=0.9)
+
+
+
+###BB1
+
+EB.BB1 <- read.csv('/Users/marionnyberg/Google\ Drive/Micromet\ Lab/Projects/2014-Burns\ Bog/Flux-tower/flux_data/BB_L3.csv') %>% dplyr::select(DATE, H, LE, NR, G)
+EB.BB1$Timestamp <- as.POSIXct(EB.BB1$DATE, format = "%Y-%m-%d %H:%M:%S", tz="UTC")
+EB.BB1 <- EB.BB1 %>% filter(Timestamp >= '2020-01-01 00:00:00' & Timestamp < '2021-01-01 00:00:00')
+EB.BB1$jday <- yday(EB.BB1$Timestamp)
+
+
+EB.BB1.daily <- EB.BB1 %>% dplyr::select(jday, H, LE, NR, G) %>%
+  ddply(c("jday"), summarise,
+      H = mean(H, na.rm = TRUE),
+      LE = mean(LE, na.rm = TRUE),
+      NR = mean(NR, na.rm = TRUE),
+      G = mean(G, na.rm = TRUE))
+
+Ebal_denominator.daily <- EB.BB1.daily$NR-EB.BB1.daily$G
+
+Ebal_numerator.daily <- EB.BB1.daily$H+EB.BB1.daily$LE
+
+plot(x = Ebal_denominator.daily, y = Ebal_numerator.daily, xlab="Rn-G",ylab="LE+H")
+
+
+# calculate EB using slope to fit DAILY
+a<-round(coef(lm(Ebal_numerator.daily~Ebal_denominator.daily))[2],digits=2) #coef(lm(y~x))[2] is the slope of the regression
+b<-round(coef(lm(Ebal_numerator.daily~Ebal_denominator.daily))[1],digits=2)   
+r2<-round(summary(lm(Ebal_numerator.daily~Ebal_denominator.daily))$ r.squared,digits=2)
+
+lm_eq<-paste0("y=",a,"x",ifelse(b>0,"+",""),b)
+R2<-bquote(R^2 == .(r2)) 
+
+plot(x = Ebal_denominator.daily, y = Ebal_numerator.daily, xlab="Rn-G",ylab="LE+H")
+#abline(0,1)
+abline(lm(Ebal_numerator.daily~Ebal_denominator.daily),col='grey',lty=2)
+mtext( lm_eq,side=3,line=-2,at=200,cex=0.9)
+mtext(R2,side=3,line=-3,at=200,cex=0.9)
+
+
+```
+
+```{r figures for defence}
+#WTH
+(WTH.p.d <- ggplot(Env.input_data, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), WTH._mean)) + #as.Date adds the month names into the plot
+  #geom_ribbon(aes(ymin = WTH._min -1 , ymax = WTH._max+1), fill = "light grey")+
+    geom_line(aes (color=Site)) +
+   ylab("Water table height (cm)")+
+  xlab("Month") +
+   scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+          #scale_color_viridis(discrete = "TRUE", option = "D", begin = 0, end = 0.5)+
+   scale_color_manual(values = c("orange1", "royalblue2")) +
+  theme_bw() +
+  theme(axis.text = element_text(size=14),
+        axis.title = element_text(size=15),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/WTHdef.jpeg", width = 8, height = 4, device='jpeg', dpi=300)
+
+#NEE
+(NEEcum.d <-Flux.input_data %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NEEcum, color = Site)) +
+  geom_line(aes(color = Site))+
+  ylab(bquote('Cumulative NEE (g C' ~m^-2~')'))+
+  xlab("Month")+
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_color_manual(values = c("orange1", "royalblue2")) +
+  theme_bw()+
+   theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      legend.text = element_text(size = 13),
+      legend.title = element_text(size = 13),
+      legend.key.size = unit(1.5, "line")))#,
+      #legend.justification=c(1.25, -1.8),
+                        #legend.position=c(.9, 0.2)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/NEEarrangedD.jpeg", width = 9, height = 7, device='jpeg', dpi=330)
+
+#GPP
+(GPPcum.D <-Flux.input_data %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), GPPcum_f, color = Site)) +
+  geom_line()+
+  ylab(bquote('Cumulative GPP (g C' ~m^-2~')'))+
+  xlab("Month")+
+     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+        scale_color_manual(values = c("orange1", "royalblue2")) +
+  theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      axis.title.x = element_blank(),
+      axis.text.x = element_blank(),
+                        legend.position="none"))
+
+(Recocum.D <-Flux.input_data %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), Recocum, color = Site)) +
+  geom_line()+
+  ylab(bquote('Cumulative RECO (g C' ~m^-2~')'))+
+  xlab("Month")+
+ scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_color_manual(values = c("orange1", "royalblue2"))+
+ theme_bw()+
+    theme(axis.text = element_text(size=14),
+      axis.title = element_text(size=15),
+      legend.position="none"))
+
+
+(GPPER.arranged.D <- ggarrange(GPPcum.D, Recocum.D, nrow = 2, align = "v",common.legend = TRUE, heights=c(1, 1.2)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/GPPER.jpeg", width = 9, height = 7, device='jpeg', dpi=300)
+
+
+#RECO TS
+(ER.TS5.P.d <- Flux.Env %>%
+  ggplot(., aes(TS.5_mean, lnRECO, color= Site)) +
+       scale_color_jco()+
+   xlab('5cm Soil temperature (°C)')+
+   ylab(bquote('lnRECO (g C' ~m^-2~ day^-1*')'))+
+    geom_smooth(method = "lm", se = FALSE, size = 0.5) +
+        scale_color_manual(values = c("orange1", "royalblue2"))+
+  geom_point()+
+  theme_bw()+
+   theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 15)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/lNRECOtempDef.jpeg", width = 7, height = 5, device='jpeg', dpi=300)
+
+#Water table response
+(ER.WTH.P <- Flux.Env %>%
+  ggplot(., aes(WTH._mean, lnRECO, color= Site)) +
+       scale_color_jco()+
+   xlab('WTH(cm)')+
+   ylab(bquote('lnRECO (g C' ~m^-2~ day^-1*')'))+
+  geom_point()+
+   geom_smooth(method = "lm", se = FALSE, size = 0.5) + 
+            scale_color_manual(values = c("orange1", "royalblue2"))+
+  theme_bw()+
+   theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 15)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/lnCO2WTHDef.jpeg", width = 7, height = 5, device='jpeg', dpi=300)
+
+#GPP-PAR GS
+(GS.LR <- GPP %>% filter(Period == "GS" & INCOMING_PAR > 10 & GPP_f > 0 & GPP_f < 20) %>%
+  ggplot(., aes(INCOMING_PAR, GPP_f), group = Site) + geom_point(aes(color = Site))+
+        scale_color_manual(values = c("orange1", "royalblue2"))+
+    stat_function(fun=function(x) (a.GPP*x)*b.GPP/(a.GPP*x+b.GPP), colour = "royalblue2") +
+  stat_function(fun=function(x) (a.GPP.2*x)*b.GPP.2/(a.GPP.2*x+b.GPP.2), colour = "orange1") +
+        xlab(bquote('Incoming PAR ('*mu~'mol' ~m^-2~s^-1*')'))+
+          ylab(bquote('GPP ('*mu~'mol'  ~m^-2~s^-1*')'))+
+  ggtitle("Growing season")+
+  theme(axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 15),
+         axis.title.y = element_text(size = 15))+
   theme_bw())
+
+(NGS.lr <- GPP %>% filter(Period == "NGS" & INCOMING_PAR > 10 & GPP_f > 0 & GPP_f < 20) %>%
+  ggplot(., aes(INCOMING_PAR, GPP_f), group = Site) + geom_point(aes(color = Site))+
+        scale_color_manual(values = c("orange1", "royalblue2"))+
+    stat_function(fun=function(x) (a.GPP.ngs*x)*b.GPP.ngs/(a.GPP.ngs*x+b.GPP.ngs), colour = "royalblue2") +
+  stat_function(fun=function(x) (a.GPP.2ngs*x)*b.GPP.2ngs/(a.GPP.2ngs*x+b.GPP.2ngs), colour = "orange1") +
+        xlab(bquote('Incoming PAR ('*mu~'mol' ~m^-2~s^-1*')'))+
+          ylab(bquote('GPP ('*mu~'mol' ~m^-2~s^-1*')'))+
+  ggtitle("Non-growing season") +
+  theme(axis.title.y = element_blank(),
+        axis.text = element_text(size = 14),
+          axis.title.x = element_text(size = 15))+
+         #axis.title.y = element_text(size = 12))+
+  theme_bw())
+
+(lightresposne.arranged <- ggarrange(GS.LR, NGS.lr, ncol = 2, common.legend = TRUE, align = "h", widths=c(1, 1)))
+
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/LRarranged.jpeg", width = 6, height = 4, device='jpeg', dpi=330)
+
+#NDVI
+(NDVI.p <- ggplot(NDVI.new, aes(x = as.Date(jday, origin = as.Date("2020-01-01")), NDVI_lf)) + 
+ geom_line(aes(colour = Site)) +
+  ylab("NDVI")+
+  xlab("Month") +
+            scale_color_manual(values = c("orange1", "royalblue2"))+
+    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  theme_bw()+
+  theme(axis.text = element_text(size=14),
+        axis.title = element_text(size=15)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/NDVID.jpeg", width = 6.5, height = 4, device='jpeg', dpi=330)
+
+#CH4 cumulative
+(CH4cum.p.D <-Flux.input_data %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), CH4cum_f_RF_gC, color = Site)) +
+  geom_line()+
+  ylab(bquote('Cumulative FCH4 (g C' ~m^-2~')'))+
+  xlab("Month")+
+  scale_color_manual(values = c("orange1", "royalblue2"))+
+     scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  theme_bw()+
+   theme(axis.text = element_text(size=14),
+         axis.title = element_text(size=15),
+         legend.title = element_text(size = 13),
+         legend.text = element_text(size= 13)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4cumD.jpeg", width = 7.5, height = 4, device='jpeg', dpi=300)
+
+#CH4 timeseries
+(CH4.p.D <-Flux.input_data %>% 
+  ggplot(., aes(x = as.Date(jday, origin = as.Date("2020-01-01")), CH4mgC_f_RF, color = Site)) +
+  geom_line()+
+  ylab(bquote('FCH4 (mg C' ~m^-2~')'))+
+  xlab("Month")+
+      scale_color_manual(values = c("orange1", "royalblue2"))+
+ scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+ theme_bw()+
+   theme(axis.text = element_text(size=14),
+         axis.title = element_text(size=15)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4D.jpeg", width = 7.5, height = 4, device='jpeg', dpi=300)
+
+#CH4TS
+(Temp.logCH4D<- Flux.Env.Ngf %>%  
+  ggplot(., aes(TS.5_mean,logCH4_mgC, color= Site)) +
+     ylab(bquote('lnFCH4(mg C' ~m^-2~ day^-1*')'))+
+    scale_color_manual(values = c("orange1", "royalblue2"))+
+   xlab('5cm soil temperature (°C)')+
+  geom_point(aes(), size = 1) +
+   geom_smooth(method = "lm", se = FALSE, size = 0.5) +
+    ggtitle("TS")+
+  theme_bw()+
+   theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 14)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4TSD.jpeg", width = 5, height = 4, device='jpeg', dpi=300)
+
+#CH4 WTH
+(WTH.logCH4D<- Flux.Env.Ngf %>% #don't need to log transform CH4? 
+  ggplot(., aes(WTH._mean,logCH4_mgC,  color= Site)) +
+        #scale_shape_manual(values = c(1,15))+
+    scale_color_manual(values = c("orange1", "royalblue2"))+
+    ylab(bquote('' ~lnFCH[4]~ ' (g C' ~m^-2~ day^-1*')'))+
+   xlab('WTH (cm)')+
+  geom_point(aes(), size = 1) +
+    stat_function(fun=func.bb1, xlim = c(-13, 13), color ="royalblue2") +
+        stat_function(fun=func.bb2, color = "orange1") +
+    ggtitle("WTH") +
+  theme_bw()+
+    theme(axis.text = element_text(size = 14),
+          axis.title = element_text(size = 14)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4WTH.jpeg", width = 5, height = 4, device='jpeg', dpi=300)
+
+
+#CH4 GPP
+(CH4.Cseq.p <-CH4GPP %>% 
+  ggplot(., aes(log(GPPgC_f), logCH4_mgC, color = Site)) +
+  geom_point(aes(), size = 1)+
+    scale_x_continuous(limits = c(-1,2))+
+        scale_color_manual(values = c("orange1", "royalblue2"))+
+   geom_smooth(method = "lm", se = FALSE, aes(colour = Site), size = 0.5) +
+  xlab(bquote('lnGPP (g C' ~m^-2~ day^-1*')'))+
+    ylab(bquote('' ~lnFCH[4]~ ' (g C' ~m^-2~ day^-1*')'))+
+    #scale_x_continuous(limits = c(- 2))+
+    ggtitle("GPP")+
+  theme_bw()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 14)))
+
+ggsave(file = "/Users/marionnyberg/Google\ Drive/Micromet\ Lab/People/2019-Marion\ Nyberg/BB1-2/plots/CH4GPP.jpeg", width = 5, height = 4, device='jpeg', dpi=300)
+
 ```
